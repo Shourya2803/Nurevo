@@ -100,6 +100,12 @@ class AuthService:
             logger.warning(f"Login request for unregistered email: {email}")
             return True
 
+        if user.role != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only workspace owners can log in using this form. Members and Team Leads must access the workspace using their workspace invite link."
+            )
+
         if user.status == "inactive":
             logger.warning(f"Login request for inactive user: {email}")
             return True
@@ -189,14 +195,15 @@ class AuthService:
         else:
             # 2. Check Invitation Repository
             invitation = await self.invite_repo.get_by_token(token)
-            if not invitation or invitation.status != "pending":
+            if not invitation or invitation.status not in ["pending", "accepted"]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid, expired, or already used magic join token."
+                    detail="Invalid or expired magic join token."
                 )
 
-            # Mark invitation accepted
-            await self.invite_repo.update(str(invitation.id), {"status": "accepted"})
+            # Mark invitation accepted if it was pending
+            if invitation.status == "pending":
+                await self.invite_repo.update(str(invitation.id), {"status": "accepted"})
 
             # Fetch pending user by email
             user = await self.user_repo.get_by_email(invitation.email)
@@ -215,7 +222,9 @@ class AuthService:
             # Add to team if invitation specified team_id
             if invitation.team_id:
                 team_repo = TeamRepository(self.db)
-                await team_repo.add_member(str(invitation.team_id), str(invitation.workspace_id), str(user.id))
+                team_data = await team_repo.get_by_id(str(invitation.team_id))
+                if team_data and user.id not in team_data.member_ids:
+                    await team_repo.add_member(str(invitation.team_id), str(invitation.workspace_id), str(user.id))
 
         if not workspace:
             raise HTTPException(
