@@ -1,0 +1,565 @@
+import { useEffect, useState, type ChangeEvent } from 'react';
+import { useAuthStore } from '../../store/authStore';
+import { api } from '../../lib/api';
+import { 
+  FileText, 
+  Upload, 
+  Check, 
+  X, 
+  Trash2, 
+  Download, 
+  Eye, 
+  Plus, 
+  Search, 
+  Clock, 
+  Paperclip
+} from 'lucide-react';
+
+interface Document {
+  id: string;
+  title: string;
+  description: string;
+  content: string;
+  tags: string[];
+  attachment_url: string | null;
+  status: string;
+  workspace_id: string;
+  team_id: string | null;
+  author_id: string;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface Team {
+  id: string;
+  name: string;
+}
+
+export default function Documents() {
+  const { user } = useAuthStore();
+  const isApprover = user?.role === 'owner' || user?.role === 'lead';
+
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'browse' | 'pending'>('browse');
+
+  // Search & Filter
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Upload/Create Form State
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [content, setContent] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+
+  // Detail View State
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+
+  const fetchTeams = async () => {
+    try {
+      const response = await api.get('/teams');
+      setTeams(response.data);
+    } catch (err) {
+      console.error('Failed to load teams:', err);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const response = await api.get('/documents');
+      setDocuments(response.data);
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeams();
+    fetchDocuments();
+  }, []);
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setAttachmentFile(e.target.files[0]);
+    }
+  };
+
+  const handleCreateDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) return;
+
+    setCreateLoading(true);
+    try {
+      let attachmentUrl = null;
+
+      // 1. Upload file if selected
+      if (attachmentFile) {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', attachmentFile);
+
+        const uploadRes = await api.post('/documents/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        attachmentUrl = uploadRes.data.url;
+        setUploading(false);
+      }
+
+      // 2. Create the document metadata
+      const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+      await api.post('/documents', {
+        title,
+        description,
+        content,
+        tags,
+        team_id: teamId || null,
+        attachment_url: attachmentUrl
+      });
+
+      // Reset state
+      setTitle('');
+      setDescription('');
+      setContent('');
+      setTeamId('');
+      setTagsInput('');
+      setAttachmentFile(null);
+      setShowUploadModal(false);
+      
+      fetchDocuments();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to publish document.');
+    } finally {
+      setCreateLoading(false);
+      setUploading(false);
+    }
+  };
+
+  const handleApprove = async (docId: string) => {
+    try {
+      await api.post(`/documents/${docId}/approve`);
+      fetchDocuments();
+      if (selectedDoc?.id === docId) {
+        setSelectedDoc(prev => prev ? { ...prev, status: 'approved' } : null);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to approve document.');
+    }
+  };
+
+  const handleReject = async (docId: string) => {
+    try {
+      await api.post(`/documents/${docId}/reject`);
+      fetchDocuments();
+      if (selectedDoc?.id === docId) {
+        setSelectedDoc(prev => prev ? { ...prev, status: 'rejected' } : null);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to reject document.');
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+    try {
+      await api.delete(`/documents/${docId}`);
+      setSelectedDoc(null);
+      fetchDocuments();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete document.');
+    }
+  };
+
+  // Filter lists
+  const filteredDocs = documents.filter(doc => {
+    const matchesSearch = 
+      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (activeTab === 'browse') {
+      return matchesSearch && doc.status === 'approved';
+    } else {
+      return matchesSearch && doc.status === 'pending_approval';
+    }
+  });
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Upper header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Documents Repository</h2>
+          <p className="text-xs text-gray-500">Secure knowledge-base and file sharing environment.</p>
+        </div>
+
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-brand-700/10 cursor-pointer self-start sm:self-auto"
+        >
+          <Plus className="h-4.5 w-4.5" />
+          Create / Upload Document
+        </button>
+      </div>
+
+      {/* Navigation tabs + Search box */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 pb-2">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setActiveTab('browse')}
+            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+              activeTab === 'browse'
+                ? 'border-brand-700 text-brand-700'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            Approved Base ({documents.filter(d => d.status === 'approved').length})
+          </button>
+          
+          {(isApprover || documents.some(d => d.author_id === user?.id && d.status === 'pending_approval')) && (
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                activeTab === 'pending'
+                  ? 'border-brand-700 text-brand-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              Pending Approval ({documents.filter(d => d.status === 'pending_approval').length})
+              {documents.filter(d => d.status === 'pending_approval').length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              )}
+            </button>
+          )}
+        </div>
+
+        <div className="relative w-full md:w-80">
+          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-gray-400" />
+          </span>
+          <input
+            type="text"
+            placeholder="Search documents or tags..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+          />
+        </div>
+      </div>
+
+      {/* Main Core Split Layout */}
+      {loading ? (
+        <div className="py-20 text-center text-xs text-gray-400">Loading documents directory...</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Left panel: List */}
+          <div className="lg:col-span-7 space-y-4">
+            {filteredDocs.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 text-xs text-gray-400">
+                No documents found matching this filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredDocs.map((doc) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => setSelectedDoc(doc)}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white text-left ${
+                      selectedDoc?.id === doc.id
+                        ? 'border-brand-600 shadow-sm ring-1 ring-brand-500/25'
+                        : 'border-gray-200/80 hover:border-brand-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1.5 min-w-0">
+                        <h4 className="font-bold text-gray-900 text-sm truncate">{doc.title}</h4>
+                        <p className="text-xs text-gray-500 line-clamp-2">{doc.description}</p>
+                      </div>
+                      
+                      <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                        doc.status === 'approved' 
+                          ? 'bg-emerald-50 text-emerald-700' 
+                          : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {doc.status}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {doc.tags.map((tag) => (
+                        <span key={tag} className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-4 text-[10px] text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        {new Date(doc.created_at).toLocaleDateString()}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Eye className="h-3.5 w-3.5" />
+                        {doc.view_count} views
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right panel: Details view */}
+          <div className="lg:col-span-5">
+            {selectedDoc ? (
+              <div className="glass-card p-6 bg-white border border-gray-200 sticky top-6 space-y-6 text-left">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold bg-brand-50 text-brand-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      Document Detail
+                    </span>
+                    <h3 className="font-extrabold text-gray-950 text-base">{selectedDoc.title}</h3>
+                  </div>
+
+                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                    selectedDoc.status === 'approved' 
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  }`}>
+                    {selectedDoc.status}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Description</h5>
+                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedDoc.description}</p>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Content Body</h5>
+                    <div className="text-xs text-gray-700 bg-gray-50/50 p-4 rounded-xl border border-gray-100 mt-1 whitespace-pre-wrap font-sans leading-relaxed min-h-[150px]">
+                      {selectedDoc.content}
+                    </div>
+                  </div>
+
+                  {selectedDoc.attachment_url && (
+                    <div className="border border-brand-100 rounded-xl p-3 bg-brand-50/10 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 text-xs text-gray-600 min-w-0">
+                        <Paperclip className="h-4.5 w-4.5 text-brand-700 shrink-0" />
+                        <span className="font-semibold truncate">Attachment Download Link</span>
+                      </div>
+                      
+                      <a
+                        href={selectedDoc.attachment_url.startsWith('/') 
+                          ? `${api.defaults.baseURL?.replace('/api/v1', '')}${selectedDoc.attachment_url}`
+                          : selectedDoc.attachment_url
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-brand-700 hover:bg-brand-800 text-white p-2 rounded-lg transition-colors inline-flex items-center justify-center shrink-0 cursor-pointer"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Operations */}
+                <div className="border-t border-gray-100 pt-4 flex flex-wrap gap-2 justify-between">
+                  {/* Approval triggers */}
+                  {isApprover && selectedDoc.status === 'pending_approval' && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApprove(selectedDoc.id)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Check className="h-4 w-4" />
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleReject(selectedDoc.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                        Reject
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Delete triggers */}
+                  {(user?.role === 'owner' || selectedDoc.author_id === user?.id) && (
+                    <button
+                      onClick={() => handleDelete(selectedDoc.id)}
+                      className="bg-transparent hover:bg-red-50 text-red-600 font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all border border-red-200/50 cursor-pointer ml-auto"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete Document
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-10 border border-gray-200 bg-white rounded-2xl text-center text-xs text-gray-400 sticky top-6">
+                <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                Select a document from the register list to view details, inspect content, download secure attachments, or trigger RBAC approvals.
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {/* CREATE / UPLOAD MODAL */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-xl bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden animate-slide-up text-left">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Upload className="h-5 w-5 text-brand-700" />
+                Publish/Upload Workspace Document
+              </h3>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 p-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDocument} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Document Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. API Integration Guide"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Short Description
+                </label>
+                <input
+                  type="text"
+                  placeholder="Summarize the purpose of this file..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Content Body *
+                </label>
+                <textarea
+                  required
+                  rows={6}
+                  placeholder="Draft your main document content or instructions here..."
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Assign to Team / Squad
+                  </label>
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                  >
+                    <option value="">Public to entire Workspace</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Tags (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. dev, backend, schema"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Secure File Attachment
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-8 w-8 text-gray-400" />
+                    <div className="flex text-xs text-gray-600">
+                      <label className="relative cursor-pointer bg-transparent rounded-md font-semibold text-brand-700 hover:text-brand-800">
+                        <span>Select file</span>
+                        <input
+                          type="file"
+                          onChange={handleFileChange}
+                          className="sr-only"
+                        />
+                      </label>
+                      <p className="pl-1 text-gray-500">or drag and drop</p>
+                    </div>
+                    <p className="text-[10px] text-gray-400">PDF, PNG, JPG, ZIP up to 10MB</p>
+                    {attachmentFile && (
+                      <p className="text-xs font-bold text-brand-700 flex items-center justify-center gap-1 mt-2">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {attachmentFile.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="bg-transparent hover:bg-gray-100 text-gray-700 font-semibold py-2 px-4 rounded-xl text-xs border border-gray-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading || uploading}
+                  className="bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2 px-4 rounded-xl text-xs transition-all shadow-md shadow-brand-700/10 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {(createLoading || uploading) && <Clock className="h-3.5 w-3.5 animate-spin" />}
+                  {createLoading ? 'Publishing...' : 'Publish Document'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
