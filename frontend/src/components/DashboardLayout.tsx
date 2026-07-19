@@ -52,23 +52,25 @@ export default function DashboardLayout() {
 
           {/* Navigation Links */}
           <nav className="space-y-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${isActive
-                      ? 'bg-brand-700 text-white shadow-md shadow-brand-700/10'
-                      : 'text-brand-300 hover:text-white hover:bg-brand-900/50'
-                    }`}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {item.name}
-                </Link>
-              );
-            })}
+            {navItems
+              .filter((item) => !(item.name === 'Settings' && user?.role === 'member'))
+              .map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${isActive
+                        ? 'bg-brand-700 text-white shadow-md shadow-brand-700/10'
+                        : 'text-brand-300 hover:text-white hover:bg-brand-900/50'
+                      }`}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    {item.name}
+                  </Link>
+                );
+              })}
           </nav>
         </div>
 

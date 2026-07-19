@@ -321,16 +321,18 @@ export default function Teams() {
         >
           Teams & Squads
         </button>
-        <button
-          onClick={() => setActiveTab('members')}
-          className={`pb-3 text-sm font-semibold border-b-2 px-4 transition-all uppercase tracking-wider ${
-            activeTab === 'members' 
-              ? 'border-brand-700 text-brand-700' 
-              : 'border-transparent text-gray-500 hover:text-gray-800'
-          }`}
-        >
-          All Members ({activeTab === 'members' ? members.length : '...'})
-        </button>
+        {user?.role !== 'member' && (
+          <button
+            onClick={() => setActiveTab('members')}
+            className={`pb-3 text-sm font-semibold border-b-2 px-4 transition-all uppercase tracking-wider ${
+              activeTab === 'members' 
+                ? 'border-brand-700 text-brand-700' 
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            All Members ({activeTab === 'members' ? members.length : '...'})
+          </button>
+        )}
       </div>
 
       {/* ======================= TAB 1: TEAMS ======================= */}
@@ -377,19 +379,30 @@ export default function Teams() {
 
                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1.5">
                       <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">Team Leads</p>
-                      <p className="text-xs font-bold text-gray-700 truncate">
+                      <div className="flex flex-wrap gap-1.5 items-center">
                         {(() => {
                           const leads = team.lead_ids || [];
                           const allLeads = [...(team.team_lead_id ? [team.team_lead_id] : []), ...leads];
                           const uniqueLeads = Array.from(new Set(allLeads));
-                          
-                          if (uniqueLeads.length === 0) return 'Unassigned';
-                          
-                          return uniqueLeads
-                            .map((id) => members.find((m) => m.id === id)?.full_name || `ID: ${id.slice(-6)}`)
-                            .join(', ');
+
+                          if (uniqueLeads.length === 0) {
+                            return <span className="text-xs text-gray-400 italic">Unassigned</span>;
+                          }
+
+                          return uniqueLeads.map((id) => {
+                            const leadName = members.find((m) => m.id === id)?.full_name || `ID: ${id.slice(-6)}`;
+                            const isCurrentUser = id === user?.id;
+                            return (
+                              <span key={id} className="flex items-center gap-1">
+                                <span className="text-xs font-bold text-gray-700">{leadName}</span>
+                                {isCurrentUser && (
+                                  <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
+                                )}
+                              </span>
+                            );
+                          });
                         })()}
-                      </p>
+                      </div>
                     </div>
                   </div>
 
@@ -488,7 +501,12 @@ export default function Teams() {
                         <tr key={member.id} className="hover:bg-gray-50/30">
                           <td className="py-4 px-6 font-semibold text-gray-900">
                             <div className="space-y-0.5">
-                              <p className="font-semibold text-gray-900">{member.full_name}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-900">{member.full_name}</p>
+                                {member.id === user?.id && (
+                                  <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-gray-400 font-mono">ID: {member.id}</p>
                             </div>
                           </td>
@@ -660,7 +678,12 @@ export default function Teams() {
                   return (
                     <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/40 border border-amber-100/60 text-xs">
                       <div className="space-y-0.5">
-                        <span className="font-semibold text-gray-900">{ownerMember.full_name} (Admin)</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-900">{ownerMember.full_name} (Admin)</span>
+                          {ownerMember.id === user?.id && (
+                            <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-gray-400 font-mono">ID: {ownerMember.id}</p>
                       </div>
                       <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase tracking-wider flex items-center gap-0.5 border border-amber-200">
@@ -693,6 +716,9 @@ export default function Teams() {
                             <span className="font-semibold text-gray-800">
                               {mInfo?.full_name || 'Unknown Member'}
                             </span>
+                            {memberId === user?.id && (
+                              <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
+                            )}
                             {isLead && (
                               <span className="bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider flex items-center gap-0.5 border border-indigo-100">
                                 <Crown className="h-3 w-3" />
