@@ -9,7 +9,7 @@ async def test_root_endpoint(client: AsyncClient):
     assert response.json()["status"] == "online"
 
 @pytest.mark.asyncio
-async def test_owner_signup_and_magic_link_flow(client: AsyncClient, test_db_clean):
+async def test_owner_signup_and_login_flow(client: AsyncClient, test_db_clean):
     db = test_db_clean
 
     # 1. Sign Up
@@ -17,13 +17,18 @@ async def test_owner_signup_and_magic_link_flow(client: AsyncClient, test_db_cle
         "full_name": "Alex Owner",
         "email": "alex@acme.com",
         "workspace_name": "Acme Corp",
-        "workspace_slug": "acme"
+        "workspace_slug": "acme",
+        "password": "securepassword"
     }
     signup_response = await client.post("/api/v1/auth/signup", json=signup_payload)
     assert signup_response.status_code == 201
-    assert "Workspace creation initiated" in signup_response.json()["message"]
+    
+    signup_data = signup_response.json()
+    assert "access_token" in signup_data
+    assert signup_data["role"] == "owner"
+    assert signup_data["email"] == "alex@acme.com"
 
-    # Assert pending workspace and owner created in DB
+    # Assert workspace and owner created in DB
     workspace = await db["workspaces"].find_one({"slug": "acme"})
     assert workspace is not None
     assert workspace["name"] == "Acme Corp"
@@ -31,74 +36,57 @@ async def test_owner_signup_and_magic_link_flow(client: AsyncClient, test_db_cle
     user = await db["users"].find_one({"email": "alex@acme.com"})
     assert user is not None
     assert user["role"] == "owner"
-    assert user["status"] == "pending"
+    assert user["status"] == "active"
     assert str(user["workspace_id"]) == str(workspace["_id"])
+    assert user["password_hash"] is not None
 
-    # Assert magic link created in DB
-    magic_link = await db["magic_links"].find_one({"email": "alex@acme.com"})
-    assert magic_link is not None
-    assert magic_link["used"] is False
-    assert magic_link["action"] == "signup"
-
-    # 2. Verify Magic Link
-    token = magic_link["token"]
-    verify_response = await client.get(f"/api/v1/auth/verify?token={token}")
-    assert verify_response.status_code == 200
-    verify_data = verify_response.json()
-    assert "access_token" in verify_data
-    assert verify_data["role"] == "owner"
-    assert verify_data["workspace_id"] == str(workspace["_id"])
-
-    # Assert user status is now active and link is marked used
-    user_updated = await db["users"].find_one({"email": "alex@acme.com"})
-    assert user_updated["status"] == "active"
-    magic_link_updated = await db["magic_links"].find_one({"token": token})
-    assert magic_link_updated["used"] is True
-
-    # 3. Request login magic link for existing user
-    login_response = await client.post("/api/v1/auth/login", json={"email": "alex@acme.com"})
+    # 2. Login (Success)
+    login_payload = {
+        "email": "alex@acme.com",
+        "password": "securepassword"
+    }
+    login_response = await client.post("/api/v1/auth/login", json=login_payload)
     assert login_response.status_code == 200
-    assert "login link" in login_response.json()["message"]
+    login_data = login_response.json()
+    assert "access_token" in login_data
+    assert login_data["role"] == "owner"
+    assert login_data["workspace_id"] == str(workspace["_id"])
 
-    # Verify new login magic link
-    new_magic_link = await db["magic_links"].find_one({"email": "alex@acme.com", "used": False})
-    assert new_magic_link is not None
-    assert new_magic_link["action"] == "login"
-
-    verify_login_response = await client.get(f"/api/v1/auth/verify?token={new_magic_link['token']}")
-    assert verify_login_response.status_code == 200
-    assert "access_token" in verify_login_response.json()
-
+    # 3. Login (Fail)
+    fail_payload = {
+        "email": "alex@acme.com",
+        "password": "wrongpassword"
+    }
+    fail_response = await client.post("/api/v1/auth/login", json=fail_payload)
+    assert fail_response.status_code == 401
 
 @pytest.mark.asyncio
 async def test_workspace_isolation_and_rbac(client: AsyncClient, test_db_clean):
-    db = test_db_clean
-
     # Create Owner 1 (Acme Workspace)
     owner1_payload = {
         "full_name": "Owner One",
         "email": "owner1@acme.com",
         "workspace_name": "Acme Workspace",
-        "workspace_slug": "acme1"
+        "workspace_slug": "acme1",
+        "password": "securepassword1"
     }
-    await client.post("/api/v1/auth/signup", json=owner1_payload)
-    ml1 = await db["magic_links"].find_one({"email": "owner1@acme.com"})
-    v1 = await client.get(f"/api/v1/auth/verify?token={ml1['token']}")
-    token1 = v1.json()["access_token"]
-    w1_id = v1.json()["workspace_id"]
+    res1 = await client.post("/api/v1/auth/signup", json=owner1_payload)
+    assert res1.status_code == 201
+    token1 = res1.json()["access_token"]
+    w1_id = res1.json()["workspace_id"]
 
     # Create Owner 2 (Beta Workspace)
     owner2_payload = {
         "full_name": "Owner Two",
         "email": "owner2@beta.com",
         "workspace_name": "Beta Workspace",
-        "workspace_slug": "beta"
+        "workspace_slug": "beta",
+        "password": "securepassword2"
     }
-    await client.post("/api/v1/auth/signup", json=owner2_payload)
-    ml2 = await db["magic_links"].find_one({"email": "owner2@beta.com"})
-    v2 = await client.get(f"/api/v1/auth/verify?token={ml2['token']}")
-    token2 = v2.json()["access_token"]
-    w2_id = v2.json()["workspace_id"]
+    res2 = await client.post("/api/v1/auth/signup", json=owner2_payload)
+    assert res2.status_code == 201
+    token2 = res2.json()["access_token"]
+    w2_id = res2.json()["workspace_id"]
 
     # 1. Public endpoint lookup
     public_res = await client.get("/api/v1/workspaces/by-slug/acme1")
@@ -121,7 +109,6 @@ async def test_workspace_isolation_and_rbac(client: AsyncClient, test_db_clean):
     assert settings_res.status_code == 200
     assert settings_res.json()["settings"]["theme"] == "dark"
 
-
 @pytest.mark.asyncio
 async def test_team_crud_and_transactional_deletion(client: AsyncClient, test_db_clean):
     db = test_db_clean
@@ -131,12 +118,13 @@ async def test_team_crud_and_transactional_deletion(client: AsyncClient, test_db
         "full_name": "Acme Owner",
         "email": "owner@acme.com",
         "workspace_name": "Acme Corp",
-        "workspace_slug": "acme"
+        "workspace_slug": "acme",
+        "password": "securepassword"
     }
-    await client.post("/api/v1/auth/signup", json=owner_payload)
-    ml = await db["magic_links"].find_one({"email": "owner@acme.com"})
-    v = await client.get(f"/api/v1/auth/verify?token={ml['token']}")
-    token = v.json()["access_token"]
+    res = await client.post("/api/v1/auth/signup", json=owner_payload)
+    assert res.status_code == 201
+    token = res.json()["access_token"]
+    workspace_id = res.json()["workspace_id"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Create a Team
@@ -166,7 +154,7 @@ async def test_team_crud_and_transactional_deletion(client: AsyncClient, test_db
         full_name="Alex Developer",
         role="member",
         status="active",
-        workspace_id=ObjectId(v.json()["workspace_id"])
+        workspace_id=ObjectId(workspace_id)
     )
     await db["users"].insert_one(new_user.to_mongo())
 
@@ -193,3 +181,58 @@ async def test_team_crud_and_transactional_deletion(client: AsyncClient, test_db
     # Assert team deleted from DB
     deleted_team = await db["teams"].find_one({"_id": ObjectId(team_id)})
     assert deleted_team is None
+
+from unittest.mock import patch
+
+class MockResponse:
+    def __init__(self, status_code, json_data):
+        self.status_code = status_code
+        self._json_data = json_data
+
+    def json(self):
+        return self._json_data
+
+@pytest.mark.asyncio
+async def test_clerk_login_flow(client: AsyncClient, test_db_clean):
+    db = test_db_clean
+
+    # 1. Login attempt for unregistered user
+    login_res = await client.post("/api/v1/auth/clerk", json={"token": "mock_clerk_token"})
+    assert login_res.status_code == 200
+    login_data = login_res.json()
+    assert login_data["registered"] is False
+    assert login_data["email"] == "clerk_user@acme.com"
+    assert login_data["full_name"] == "Clerk User"
+
+    # 2. Complete Signup
+    signup_payload = {
+        "token": "mock_clerk_token",
+        "workspace_name": "Clerk Workspace",
+        "workspace_slug": "clerk-slug"
+    }
+    signup_res = await client.post("/api/v1/auth/clerk/signup", json=signup_payload)
+    assert signup_res.status_code == 201
+    signup_data = signup_res.json()
+    assert "access_token" in signup_data
+    assert signup_data["role"] == "owner"
+    assert signup_data["workspace_slug"] == "clerk-slug"
+
+    # Assert db records
+    workspace = await db["workspaces"].find_one({"slug": "clerk-slug"})
+    assert workspace is not None
+    assert workspace["name"] == "Clerk Workspace"
+
+    user = await db["users"].find_one({"email": "clerk_user@acme.com"})
+    assert user is not None
+    assert user["role"] == "owner"
+    assert user["status"] == "active"
+    assert user["clerk_id"] == "user_mockclerk12345"
+    assert user["avatar_url"] == "https://lh3.googleusercontent.com/avatar"
+
+    # 3. Login attempt for now-registered user
+    login_res2 = await client.post("/api/v1/auth/clerk", json={"token": "mock_clerk_token"})
+    assert login_res2.status_code == 200
+    login_data2 = login_res2.json()
+    assert login_data2["registered"] is True
+    assert "access_token" in login_data2["token"]
+    assert login_data2["token"]["workspace_slug"] == "clerk-slug"

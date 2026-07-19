@@ -126,6 +126,9 @@ class WorkspaceService:
                 <div style="margin: 30px 0;">
                     <a href="{join_url}" style="background-color: #6F4E37; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
                 </div>
+                <p>Or copy and paste this URL into your browser:</p>
+                <p style="word-break: break-all;"><a href="{join_url}">{join_url}</a></p>
+                <br/>
                 <p style="font-size: 12px; color: #777;">This magic join link is exclusive to your email and is valid indefinitely.</p>
             </body>
         </html>
@@ -137,7 +140,7 @@ class WorkspaceService:
         """
         Lists all users in a workspace.
         """
-        return await self.user_repo.get_many({"workspace_id": ObjectId(workspace_id)})
+        return await self.user_repo.get_all({"workspace_id": ObjectId(workspace_id)})
 
     async def update_member_role_or_status(self, workspace_id: str, member_id: str, role: str, status_value: Optional[str] = None) -> User:
         """
@@ -174,7 +177,7 @@ class WorkspaceService:
             )
 
         # Remove user from all teams
-        teams = await self.team_repo.get_many({
+        teams = await self.team_repo.get_all({
             "workspace_id": ObjectId(workspace_id),
             "member_ids": ObjectId(member_id)
         })

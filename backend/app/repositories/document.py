@@ -11,13 +11,13 @@ class DocumentRepository(BaseRepository[Document]):
         """
         Retrieves all documents associated with a workspace.
         """
-        return await self.get_many({"workspace_id": workspace_id, "is_deleted": False})
+        return await self.get_all({"workspace_id": workspace_id, "is_deleted": False})
 
     async def get_by_team(self, workspace_id: str, team_id: str) -> List[Document]:
         """
         Retrieves all documents associated with a specific team.
         """
-        return await self.get_many({
+        return await self.get_all({
             "workspace_id": workspace_id,
             "team_id": team_id,
             "is_deleted": False

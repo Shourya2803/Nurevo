@@ -1,5 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
+
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+)
+logger = logging.getLogger("nurevo")
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,13 +19,6 @@ from app.api.auth import router as auth_router
 from app.api.workspace import router as workspace_router
 from app.api.team import router as team_router
 from app.api.document import router as document_router
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-)
-logger = logging.getLogger("nurevo")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str = "your-service-role-key"
     SUPABASE_BUCKET: str = "nurevo-documents"
 
+    # Clerk OAuth
+    CLERK_SECRET_KEY: str = ""
+    CLERK_JWKS_URL: str = "https://api.clerk.com/v1/jwks"
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
         env_file_encoding="utf-8",

@@ -1,4 +1,6 @@
 import logging
+import os
+from datetime import datetime
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -18,9 +20,17 @@ async def send_email(to_email: str, subject: str, html_content: str) -> None:
         logger.info("======== DEV EMAIL PREVIEW ========")
         logger.info(f"To: {to_email}")
         logger.info(f"Subject: {subject}")
-        logger.info("HTML Content:")
-        logger.info(html_content)
         logger.info("====================================")
+        
+        # Save HTML preview to a local file for convenient debugging / link clicking
+        try:
+            os.makedirs("dev_emails", exist_ok=True)
+            filename = f"dev_emails/{to_email}_{int(datetime.utcnow().timestamp())}.html"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(f"<!--\nTo: {to_email}\nSubject: {subject}\n-->\n{html_content}")
+            logger.info(f"Email preview saved to local file: {filename}")
+        except Exception as file_err:
+            logger.error(f"Failed to save local dev email preview: {file_err}")
         return
 
     message = MIMEMultipart("alternative")

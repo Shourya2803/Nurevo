@@ -60,12 +60,10 @@ async def init_db_indexes():
             "content": 1
         }, name="document_text_search_index")
 
+
         # Notification indexes
         await db["notifications"].create_index([("user_id", pymongo.ASCENDING), ("is_read", pymongo.ASCENDING)])
 
-        # Chat message indexes
-        await db["messages"].create_index([("conversation_id", pymongo.ASCENDING), ("created_at", pymongo.ASCENDING)])
-        
         logger.info("Database indexes initialized successfully.")
     except Exception as e:
         logger.error(f"Error initializing database indexes: {e}")

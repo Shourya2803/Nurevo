@@ -60,14 +60,14 @@ class DocumentService:
             return all_docs
 
         # Fetch teams user belongs to
-        user_teams = await self.team_repo.get_many({
+        user_teams = await self.team_repo.get_all({
             "workspace_id": ObjectId(workspace_id),
             "member_ids": ObjectId(user_id)
         })
         user_team_ids = {str(t.id) for t in user_teams}
         
         # Add teams they lead
-        lead_teams = await self.team_repo.get_many({
+        lead_teams = await self.team_repo.get_all({
             "workspace_id": ObjectId(workspace_id),
             "team_lead_id": ObjectId(user_id)
         })
@@ -108,7 +108,7 @@ class DocumentService:
             is_author = str(doc.author_id) == user_id
             
             # Fetch teams they belong to
-            user_teams = await self.team_repo.get_many({
+            user_teams = await self.team_repo.get_all({
                 "workspace_id": ObjectId(workspace_id),
                 "member_ids": ObjectId(user_id)
             })

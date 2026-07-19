@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
+import { toast } from 'sonner';
 import { 
   FileText, 
   Upload, 
@@ -12,7 +13,8 @@ import {
   Plus, 
   Search, 
   Clock, 
-  Paperclip
+  Paperclip,
+  ShieldAlert
 } from 'lucide-react';
 
 interface Document {
@@ -61,6 +63,13 @@ export default function Documents() {
 
   // Detail View State
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+
+  // Custom Deletion Confirmation State
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    id: string;
+    name: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
 
   const fetchTeams = async () => {
     try {
@@ -125,6 +134,7 @@ export default function Documents() {
         attachment_url: attachmentUrl
       });
 
+      toast.success(`Document "${title}" published successfully!`);
       // Reset state
       setTitle('');
       setDescription('');
@@ -136,7 +146,7 @@ export default function Documents() {
       
       fetchDocuments();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to publish document.');
+      toast.error(err.response?.data?.detail || 'Failed to publish document.');
     } finally {
       setCreateLoading(false);
       setUploading(false);
@@ -146,36 +156,46 @@ export default function Documents() {
   const handleApprove = async (docId: string) => {
     try {
       await api.post(`/documents/${docId}/approve`);
+      toast.success('Document approved successfully!');
       fetchDocuments();
       if (selectedDoc?.id === docId) {
         setSelectedDoc(prev => prev ? { ...prev, status: 'approved' } : null);
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to approve document.');
+      toast.error(err.response?.data?.detail || 'Failed to approve document.');
     }
   };
 
   const handleReject = async (docId: string) => {
     try {
       await api.post(`/documents/${docId}/reject`);
+      toast.success('Document rejected and returned to draft.');
       fetchDocuments();
       if (selectedDoc?.id === docId) {
         setSelectedDoc(prev => prev ? { ...prev, status: 'rejected' } : null);
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to reject document.');
+      toast.error(err.response?.data?.detail || 'Failed to reject document.');
     }
   };
 
   const handleDelete = async (docId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-    try {
-      await api.delete(`/documents/${docId}`);
-      setSelectedDoc(null);
-      fetchDocuments();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete document.');
-    }
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+    setDeleteConfirmation({
+      id: docId,
+      name: doc.title,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/documents/${docId}`);
+          toast.success(`Document "${doc.title}" has been deleted.`);
+          setSelectedDoc(null);
+          fetchDocuments();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'Failed to delete document.');
+        }
+      }
+    });
   };
 
   // Filter lists
@@ -560,6 +580,43 @@ export default function Documents() {
         </div>
       )}
 
+      {/* CUSTOM DELETE CONFIRMATION MODAL */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 bg-brand-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full bg-white p-6 border border-red-100 shadow-2xl relative animate-slide-up rounded-2xl">
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="bg-red-50 p-2.5 rounded-xl">
+                <ShieldAlert className="h-6 w-6" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Confirm Deletion</h3>
+            </div>
+            
+            <p className="text-xs text-gray-600 mb-6 leading-relaxed">
+              Are you sure you want to delete the document <strong className="text-gray-950 font-semibold">"{deleteConfirmation.name}"</strong>? 
+              This will permanently remove the document record and unlink all associated squad files. This action cannot be undone.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmation(null)}
+                className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const onConfirm = deleteConfirmation.onConfirm;
+                  setDeleteConfirmation(null);
+                  await onConfirm();
+                }}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-md shadow-red-100"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

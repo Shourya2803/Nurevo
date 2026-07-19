@@ -12,3 +12,9 @@ class UserRepository(BaseRepository[User]):
         Find a user by their email address.
         """
         return await self.get_one({"email": email.strip().lower()})
+
+    async def get_by_clerk_id(self, clerk_id: str) -> Optional[User]:
+        """
+        Find a user by their Clerk ID.
+        """
+        return await self.get_one({"clerk_id": clerk_id.strip()})

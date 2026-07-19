@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
+import { toast } from 'sonner';
 import { 
   Users, 
   Plus, 
@@ -69,6 +70,14 @@ export default function Teams() {
   const [newStatus, setNewStatus] = useState('active');
   const [updateLoading, setUpdateLoading] = useState(false);
 
+  // Custom Deletion Confirmation State
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    type: 'team' | 'member';
+    id: string;
+    name: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+
   const fetchTeams = async () => {
     try {
       const response = await api.get('/teams');
@@ -109,27 +118,35 @@ export default function Teams() {
     setCreateLoading(true);
     try {
       await api.post('/teams', { name, description });
+      toast.success(`Team "${name}" created successfully!`);
       setName('');
       setDescription('');
       setShowCreateModal(false);
       fetchTeams();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create team.');
+      toast.error(err.response?.data?.detail || 'Failed to create team.');
     } finally {
       setCreateLoading(false);
     }
   };
 
-  const handleDeleteTeam = async (teamId: string) => {
-    if (!confirm('Are you sure you want to delete this team? All document associations and chats will be unlinked.')) {
-      return;
-    }
-    try {
-      await api.delete(`/teams/${teamId}`);
-      fetchTeams();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete team.');
-    }
+  const handleDeleteTeam = (teamId: string) => {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+    setDeleteConfirmation({
+      type: 'team',
+      id: teamId,
+      name: team.name,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/teams/${teamId}`);
+          toast.success(`Team "${team.name}" has been deleted.`);
+          fetchTeams();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'Failed to delete team.');
+        }
+      }
+    });
   };
 
   const handleAddMember = async () => {
@@ -137,10 +154,11 @@ export default function Teams() {
     setActionLoading(true);
     try {
       await api.post(`/teams/${selectedTeamId}/members`, { user_id: actionUserId });
+      toast.success('Member successfully added to team!');
       setActionUserId('');
       fetchTeams();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to add member.');
+      toast.error(err.response?.data?.detail || 'Failed to add member.');
     } finally {
       setActionLoading(false);
     }
@@ -151,10 +169,11 @@ export default function Teams() {
     setActionLoading(true);
     try {
       await api.post(`/teams/${selectedTeamId}/lead`, { team_lead_id: actionUserId });
+      toast.success('Team lead successfully assigned!');
       setActionUserId('');
       fetchTeams();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to assign team lead.');
+      toast.error(err.response?.data?.detail || 'Failed to assign team lead.');
     } finally {
       setActionLoading(false);
     }
@@ -163,24 +182,29 @@ export default function Teams() {
   const handleRemoveMember = async (teamId: string, memberId: string) => {
     try {
       await api.post(`/teams/${teamId}/members/remove`, { user_id: memberId });
+      toast.success('Member removed from team.');
       fetchTeams();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to remove member.');
+      toast.error(err.response?.data?.detail || 'Failed to remove member.');
     }
   };
 
-  const handleDeleteMember = async (memberId: string, fullName: string) => {
+  const handleDeleteMember = (memberId: string, fullName: string) => {
     if (!workspace?.id) return;
-    if (!confirm(`Are you sure you want to delete ${fullName} from the workspace? This will revoke all their access rights and remove them from all squads.`)) {
-      return;
-    }
-    try {
-      await api.delete(`/workspaces/${workspace.id}/members/${memberId}`);
-      fetchMembers();
-      alert('Member successfully removed from workspace.');
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to remove member.');
-    }
+    setDeleteConfirmation({
+      type: 'member',
+      id: memberId,
+      name: fullName,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/workspaces/${workspace.id}/members/${memberId}`);
+          toast.success(`Member "${fullName}" has been removed from workspace.`);
+          fetchMembers();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'Failed to remove member.');
+        }
+      }
+    });
   };
 
   const handleInviteMember = async (e: FormEvent) => {
@@ -194,15 +218,15 @@ export default function Teams() {
         role: inviteRole,
         team_id: inviteTeamId || null
       });
+      toast.success(`Invitation link generated and saved for "${inviteName}"!`);
       setInviteEmail('');
       setInviteName('');
       setInviteRole('member');
       setInviteTeamId('');
       setShowInviteModal(false);
       fetchMembers();
-      alert('Invitation sent successfully!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to invite member.');
+      toast.error(err.response?.data?.detail || 'Failed to invite member.');
     } finally {
       setInviteLoading(false);
     }
@@ -217,11 +241,11 @@ export default function Teams() {
         role: newRole,
         status: newStatus
       });
+      toast.success('Member permissions updated successfully!');
       setEditingMember(null);
       fetchMembers();
-      alert('Member updated successfully!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update member.');
+      toast.error(err.response?.data?.detail || 'Failed to update member.');
     } finally {
       setUpdateLoading(false);
     }
@@ -763,6 +787,47 @@ export default function Teams() {
                 )}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE CONFIRMATION MODAL */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 bg-brand-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full bg-white p-6 border border-red-100 shadow-2xl relative animate-slide-up rounded-2xl">
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="bg-red-50 p-2.5 rounded-xl">
+                <ShieldAlert className="h-6 w-6" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Confirm Deletion</h3>
+            </div>
+            
+            <p className="text-xs text-gray-600 mb-6 leading-relaxed">
+              Are you sure you want to delete <strong className="text-gray-950 font-semibold">"{deleteConfirmation.name}"</strong>? 
+              {deleteConfirmation.type === 'team' 
+                ? ' All document associations and chats for this team will be permanently unlinked.' 
+                : ' This will revoke all their workspace access rights and remove them from all assigned teams.'}
+               This action cannot be undone.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmation(null)}
+                className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const onConfirm = deleteConfirmation.onConfirm;
+                  setDeleteConfirmation(null);
+                  await onConfirm();
+                }}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-md shadow-red-100"
+              >
+                Confirm Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

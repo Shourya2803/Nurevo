@@ -26,9 +26,12 @@ function PublicRoute({ children }: PrivateRouteProps) {
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
 }
 
+import { Toaster } from 'sonner';
+
 export default function App() {
   return (
     <BrowserRouter>
+      <Toaster richColors position="top-right" />
       <Routes>
         {/* Public Authentication Routes */}
         <Route 

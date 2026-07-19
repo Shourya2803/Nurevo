@@ -8,7 +8,9 @@ class User(MongoBaseModel):
     role: str = Field(default="member", description="owner | lead | member")
     status: str = Field(default="pending", description="pending | active | inactive")
     workspace_id: PyObjectId
+    password_hash: Optional[str] = None
     avatar_url: Optional[str] = None
+    clerk_id: Optional[str] = None
 
     model_config = {
         "populate_by_name": True,

@@ -14,6 +14,9 @@ try:
     )
     if not is_placeholder:
         supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        logger.info("Supabase client initialized successfully.")
+    else:
+        logger.warning("Supabase URL or Key is configured with placeholder values. Using local file storage fallback.")
 except Exception as e:
     logger.exception(f"Failed to instantiate Supabase Client: {e}")
 

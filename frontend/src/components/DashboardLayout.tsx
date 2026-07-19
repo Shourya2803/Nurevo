@@ -1,6 +1,7 @@
 
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useClerk } from '@clerk/clerk-react';
 import {
   Sparkles,
   LayoutDashboard,
@@ -16,8 +17,10 @@ export default function DashboardLayout() {
   const { user, workspace, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const { signOut } = useClerk();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut();
     logout();
     navigate('/');
   };
