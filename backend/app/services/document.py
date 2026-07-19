@@ -17,13 +17,15 @@ class DocumentService:
 
     async def create_document(self, workspace_id: str, author_id: str, author_role: str, data: DocumentCreate) -> Document:
         """
-        Creates a new document. If author is Owner/Lead, it is auto-approved. If Member, it starts as pending_approval.
+        Creates a new document. If author is Owner/Lead, or is a Lead of the assigned team, it is auto-approved.
+        If Member, it starts as pending_approval.
         """
         # Verify team belongs to the workspace
         team_oid = None
+        team_obj = None
         if data.team_id:
-            team = await self.team_repo.get_by_id(data.team_id)
-            if not team or str(team.workspace_id) != workspace_id:
+            team_obj = await self.team_repo.get_by_id(data.team_id)
+            if not team_obj or str(team_obj.workspace_id) != workspace_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid team ID specified for this workspace."
@@ -31,7 +33,17 @@ class DocumentService:
             team_oid = ObjectId(data.team_id)
 
         # Set default status based on role
-        initial_status = "approved" if author_role in ["owner", "lead"] else "pending_approval"
+        initial_status = "pending_approval"
+        approved_by_id = None
+        if author_role == "owner":
+            initial_status = "approved"
+            approved_by_id = ObjectId(author_id)
+        elif author_role == "lead" and team_obj:
+            # Check if this user is a lead of the specific team they are uploading to
+            lead_ids_str = [str(l) for l in (team_obj.lead_ids or [])]
+            if str(author_id) in lead_ids_str or (team_obj.team_lead_id and str(team_obj.team_lead_id) == str(author_id)):
+                initial_status = "approved"
+                approved_by_id = ObjectId(author_id)
 
         doc = Document(
             title=data.title,
@@ -42,7 +54,8 @@ class DocumentService:
             status=initial_status,
             workspace_id=ObjectId(workspace_id),
             team_id=team_oid,
-            author_id=ObjectId(author_id)
+            author_id=ObjectId(author_id),
+            approved_by=approved_by_id
         )
 
         return await self.doc_repo.create(doc)
@@ -66,10 +79,13 @@ class DocumentService:
         })
         user_team_ids = {str(t.id) for t in user_teams}
         
-        # Add teams they lead
+        # Fetch teams they lead (either team_lead_id or in lead_ids)
         lead_teams = await self.team_repo.get_all({
             "workspace_id": ObjectId(workspace_id),
-            "team_lead_id": ObjectId(user_id)
+            "$or": [
+                {"team_lead_id": ObjectId(user_id)},
+                {"lead_ids": ObjectId(user_id)}
+            ]
         })
         lead_team_ids = {str(t.id) for t in lead_teams}
         
@@ -81,9 +97,14 @@ class DocumentService:
             is_author = str(doc.author_id) == user_id
 
             if role == "lead":
-                # Leads can see their own, team docs, or any approved doc
-                if is_author or doc_team_id in accessible_teams or doc.status == "approved":
-                    filtered.append(doc)
+                # For approved documents: visible if workspace-wide, or they belong to/lead the team
+                if doc.status == "approved":
+                    if not doc_team_id or doc_team_id in accessible_teams:
+                        filtered.append(doc)
+                # For pending/rejected documents: visible only if they are the author, or they specifically lead the team
+                else:
+                    if is_author or (doc_team_id and doc_team_id in lead_team_ids):
+                        filtered.append(doc)
             else:
                 # Members can see their own (even if pending) or approved team docs
                 if is_author or (doc_team_id in accessible_teams and doc.status == "approved"):
@@ -172,9 +193,9 @@ class DocumentService:
             )
         return updated_doc
 
-    async def approve_document(self, document_id: str, workspace_id: str, user_role: str) -> Document:
+    async def approve_document(self, document_id: str, workspace_id: str, user_id: str, user_role: str) -> Document:
         """
-        Approves a document. Allowed only for Owner (Admin) or Team Leads.
+        Approves a document. Allowed only for Owner (Admin) or Team Leads of the document's team.
         """
         if user_role not in ["owner", "lead"]:
             raise HTTPException(
@@ -189,12 +210,36 @@ class DocumentService:
                 detail="Document not found."
             )
 
-        updated_doc = await self.doc_repo.update(document_id, {"status": "approved", "updated_at": datetime.utcnow()})
+        if user_role == "lead":
+            if not doc.team_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Workspace leads can only approve team-specific documents."
+                )
+            team = await self.team_repo.get_by_id(str(doc.team_id))
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assigned team not found."
+                )
+            lead_ids_str = [str(l) for l in (team.lead_ids or [])]
+            is_team_lead = (team.team_lead_id and str(team.team_lead_id) == user_id) or user_id in lead_ids_str
+            if not is_team_lead:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. You are not a lead of this document's team."
+                )
+
+        updated_doc = await self.doc_repo.update(document_id, {
+            "status": "approved",
+            "approved_by": ObjectId(user_id),
+            "updated_at": datetime.utcnow()
+        })
         return updated_doc
 
-    async def reject_document(self, document_id: str, workspace_id: str, user_role: str) -> Document:
+    async def reject_document(self, document_id: str, workspace_id: str, user_id: str, user_role: str) -> Document:
         """
-        Rejects a document. Allowed only for Owner (Admin) or Team Leads.
+        Rejects a document. Allowed only for Owner (Admin) or Team Leads of the document's team.
         """
         if user_role not in ["owner", "lead"]:
             raise HTTPException(
@@ -208,6 +253,26 @@ class DocumentService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found."
             )
+
+        if user_role == "lead":
+            if not doc.team_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Workspace leads can only reject team-specific documents."
+                )
+            team = await self.team_repo.get_by_id(str(doc.team_id))
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assigned team not found."
+                )
+            lead_ids_str = [str(l) for l in (team.lead_ids or [])]
+            is_team_lead = (team.team_lead_id and str(team.team_lead_id) == user_id) or user_id in lead_ids_str
+            if not is_team_lead:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. You are not a lead of this document's team."
+                )
 
         updated_doc = await self.doc_repo.update(document_id, {"status": "rejected", "updated_at": datetime.utcnow()})
         return updated_doc

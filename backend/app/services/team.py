@@ -55,11 +55,10 @@ class TeamService:
                 detail="Team not found."
             )
         
-        # Enforce Team Isolation for Leads and Members
-        if role != "owner":
-            user_obj_id = ObjectId(user_id)
-            is_lead = team.team_lead_id == user_obj_id
-            is_member = user_obj_id in team.member_ids
+        # Enforce Team Isolation for Members
+        if role not in ["owner", "lead"]:
+            is_lead = str(team.team_lead_id) == str(user_id) or str(user_id) in [str(l) for l in (team.lead_ids or [])]
+            is_member = str(user_id) in [str(m) for m in team.member_ids]
             if not is_lead and not is_member:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -194,8 +193,7 @@ class TeamService:
         }
         
         # If removed member is the lead, unassign lead
-        if team.team_lead_id == user_obj_id:
-            update_op["$set"] = {"team_lead_id": None}
+        if team.team_lead_id and str(team.team_lead_id) == str(user_id):
             update_op["$set"] = {"team_lead_id": None}
 
         updated = await self.team_repo.update(team_id, update_op)

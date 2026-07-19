@@ -48,6 +48,9 @@ async def create_document(
             "workspace_id": str(doc.workspace_id),
             "team_id": str(doc.team_id) if doc.team_id else None,
             "author_id": str(doc.author_id),
+            "author_name": current_user.full_name,
+            "approved_by": str(doc.approved_by) if getattr(doc, "approved_by", None) else None,
+            "approved_by_name": current_user.full_name if getattr(doc, "approved_by", None) else None,
             "view_count": doc.view_count,
             "created_at": doc.created_at.isoformat(),
             "updated_at": doc.updated_at.isoformat()
@@ -70,8 +73,44 @@ async def list_documents(
         user_id=str(current_user.id),
         role=current_user.role
     )
-    return [
-        {
+    
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository(doc_service.db)
+    user_cache = {}
+
+    async def get_user_name(uid: str) -> str:
+        if not uid:
+            return ""
+        if uid not in user_cache:
+            u = await user_repo.get_by_id(uid)
+            user_cache[uid] = u.full_name if u else "Unknown"
+        return user_cache[uid]
+
+    result = []
+    for d in docs:
+        author_name = await get_user_name(str(d.author_id))
+        if author_name == "Unknown":
+            author_name = "Workspace Member"
+
+        approved_by_name = None
+        if getattr(d, "approved_by", None):
+            approved_by_name = await get_user_name(str(d.approved_by))
+            if approved_by_name == "Unknown":
+                approved_by_name = "Workspace Administrator"
+        
+        if d.status == "approved" and not approved_by_name:
+            # Fallback for approved docs without an explicit approver name
+            author_user = await user_repo.get_by_id(str(d.author_id))
+            if author_user and author_user.role in ["owner", "lead"]:
+                approved_by_name = author_name
+            else:
+                owners = await user_repo.get_all({"workspace_id": d.workspace_id, "role": "owner"})
+                if owners:
+                    approved_by_name = owners[0].full_name
+                else:
+                    approved_by_name = "Workspace Owner"
+
+        result.append({
             "id": str(d.id),
             "title": d.title,
             "description": d.description,
@@ -82,11 +121,92 @@ async def list_documents(
             "workspace_id": str(d.workspace_id),
             "team_id": str(d.team_id) if d.team_id else None,
             "author_id": str(d.author_id),
+            "author_name": author_name,
+            "approved_by": str(d.approved_by) if getattr(d, "approved_by", None) else None,
+            "approved_by_name": approved_by_name,
             "view_count": d.view_count,
             "created_at": d.created_at.isoformat(),
             "updated_at": d.updated_at.isoformat()
-        } for d in docs
-    ]
+        })
+    return result
+
+@router.get(
+    "/hidden",
+    summary="List Hidden Documents (Owner Only)"
+)
+async def list_hidden_documents(
+    current_user: User = Depends(RequireRoles(["owner"])),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Lists all hidden documents (is_deleted=True) in the workspace. Restricted to Owners.
+    """
+    from bson import ObjectId
+    docs_cursor = doc_service.db["documents"].find({
+        "workspace_id": ObjectId(str(current_user.workspace_id)),
+        "is_deleted": True
+    })
+    docs = await docs_cursor.to_list(1000)
+    
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository(doc_service.db)
+    result = []
+    user_cache = {}
+
+    async def get_user_name(uid: str) -> str:
+        if not uid:
+            return ""
+        if uid not in user_cache:
+            u = await user_repo.get_by_id(uid)
+            user_cache[uid] = u.full_name if u else "Unknown"
+        return user_cache[uid]
+
+    for d in docs:
+        author_id = str(d.get("author_id", ""))
+        author_name = await get_user_name(author_id)
+        if author_name == "Unknown":
+            author_name = "Workspace Member"
+
+        approved_by = d.get("approved_by")
+        approved_by_str = str(approved_by) if approved_by else None
+        approved_by_name = None
+        if approved_by_str:
+            approved_by_name = await get_user_name(approved_by_str)
+            if approved_by_name == "Unknown":
+                approved_by_name = "Workspace Administrator"
+
+        status = d.get("status")
+        if status == "approved" and not approved_by_name:
+            # Fallback for approved docs without an explicit approver name
+            author_user = await user_repo.get_by_id(author_id)
+            if author_user and author_user.role in ["owner", "lead"]:
+                approved_by_name = author_name
+            else:
+                owners = await user_repo.get_all({"workspace_id": d.get("workspace_id"), "role": "owner"})
+                if owners:
+                    approved_by_name = owners[0].full_name
+                else:
+                    approved_by_name = "Workspace Owner"
+
+        result.append({
+            "id": str(d["_id"]),
+            "title": d.get("title"),
+            "description": d.get("description"),
+            "content": d.get("content"),
+            "tags": d.get("tags", []),
+            "attachment_url": d.get("attachment_url"),
+            "status": status,
+            "workspace_id": str(d.get("workspace_id")),
+            "team_id": str(d.get("team_id")) if d.get("team_id") else None,
+            "author_id": author_id,
+            "author_name": author_name,
+            "approved_by": approved_by_str,
+            "approved_by_name": approved_by_name,
+            "view_count": d.get("view_count", 0),
+            "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
+            "updated_at": d["updated_at"].isoformat() if d.get("updated_at") else None,
+        })
+    return result
 
 @router.get(
     "/{document_id}",
@@ -106,6 +226,29 @@ async def get_document(
         user_id=str(current_user.id),
         role=current_user.role
     )
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository(doc_service.db)
+    
+    author_user = await user_repo.get_by_id(str(doc.author_id))
+    author_name = author_user.full_name if author_user else "Workspace Member"
+    
+    approved_by_str = str(doc.approved_by) if getattr(doc, "approved_by", None) else None
+    approved_by_name = None
+    if approved_by_str:
+        app_user = await user_repo.get_by_id(approved_by_str)
+        approved_by_name = app_user.full_name if app_user else "Workspace Administrator"
+        
+    if doc.status == "approved" and not approved_by_name:
+        # Fallback for approved docs without an explicit approver name
+        if author_user and author_user.role in ["owner", "lead"]:
+            approved_by_name = author_name
+        else:
+            owners = await user_repo.get_all({"workspace_id": doc.workspace_id, "role": "owner"})
+            if owners:
+                approved_by_name = owners[0].full_name
+            else:
+                approved_by_name = "Workspace Owner"
+
     return {
         "id": str(doc.id),
         "title": doc.title,
@@ -117,6 +260,9 @@ async def get_document(
         "workspace_id": str(doc.workspace_id),
         "team_id": str(doc.team_id) if doc.team_id else None,
         "author_id": str(doc.author_id),
+        "author_name": author_name,
+        "approved_by": approved_by_str,
+        "approved_by_name": approved_by_name,
         "view_count": doc.view_count,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat()
@@ -165,6 +311,7 @@ async def approve_document(
     doc = await doc_service.approve_document(
         document_id=document_id,
         workspace_id=str(current_user.workspace_id),
+        user_id=str(current_user.id),
         user_role=current_user.role
     )
     return {
@@ -187,6 +334,7 @@ async def reject_document(
     doc = await doc_service.reject_document(
         document_id=document_id,
         workspace_id=str(current_user.workspace_id),
+        user_id=str(current_user.id),
         user_role=current_user.role
     )
     return {
@@ -215,6 +363,57 @@ async def delete_document(
     return {
         "message": "Document deleted successfully."
     }
+
+@router.patch(
+    "/{document_id}/hide",
+    summary="Hide a Document (Admin Only)"
+)
+async def hide_document(
+    document_id: str,
+    current_user: User = Depends(RequireRoles(["owner"])),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Marks a document as hidden (is_deleted=True) without removing it from DB. Owner only.
+    """
+    from app.repositories.document import DocumentRepository
+    doc_repo = DocumentRepository(doc_service.db)
+    doc = await doc_repo.get_by_id(document_id)
+    if not doc or str(doc.workspace_id) != str(current_user.workspace_id):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Document not found.")
+    await doc_repo.update(document_id, {"is_deleted": True})
+    return {"message": "Document hidden successfully.", "id": document_id}
+
+
+
+@router.patch(
+    "/{document_id}/unhide",
+    summary="Unhide a Document (Owner Only)"
+)
+async def unhide_document(
+    document_id: str,
+    current_user: User = Depends(RequireRoles(["owner"])),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Marks a hidden document as active (is_deleted=False). Restricted to Owners.
+    """
+    from app.repositories.document import DocumentRepository
+    doc_repo = DocumentRepository(doc_service.db)
+    # Get all documents including hidden ones to find the target document
+    # We bypass base repository get_by_id if it automatically filters out is_deleted (wait, get_by_id usually doesn't filter is_deleted in base repository? Let's check)
+    # Let's query directly to bypass any get_by_id soft-delete filters
+    from bson import ObjectId
+    doc_dict = await doc_service.db["documents"].find_one({
+        "_id": ObjectId(document_id),
+        "workspace_id": ObjectId(str(current_user.workspace_id))
+    })
+    if not doc_dict:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Document not found.")
+    await doc_repo.update(document_id, {"is_deleted": False})
+    return {"message": "Document unhidden successfully.", "id": document_id}
 
 @router.post(
     "/upload",

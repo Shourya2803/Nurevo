@@ -33,9 +33,9 @@ export default function DashboardLayout() {
   ];
 
   return (
-    <div className="min-h-screen flex bg-gray-50/50">
+    <div className="h-screen flex overflow-hidden bg-gray-50/50">
       {/* Sidebar Panel */}
-      <aside className="w-64 bg-brand-950 text-white flex flex-col justify-between p-6 shrink-0 shadow-xl relative z-10">
+      <aside className="w-56 bg-brand-950 text-white flex flex-col justify-between p-5 shrink-0 shadow-xl relative z-10 h-screen overflow-hidden">
         <div className="space-y-8">
           {/* Logo and Brand */}
           <div className="flex items-center gap-2.5 pb-4 border-b border-brand-900">
@@ -102,7 +102,7 @@ export default function DashboardLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header navbar */}
         <header className="h-16 bg-white border-b border-gray-200/80 px-8 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -127,7 +127,7 @@ export default function DashboardLayout() {
         </header>
 
         {/* Content Outlet */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 overflow-y-auto">
           <Outlet />
         </main>
       </div>

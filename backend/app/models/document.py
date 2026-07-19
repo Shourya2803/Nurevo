@@ -12,6 +12,7 @@ class Document(MongoBaseModel):
     workspace_id: PyObjectId
     team_id: Optional[PyObjectId] = None
     author_id: PyObjectId
+    approved_by: Optional[PyObjectId] = None
     view_count: int = Field(default=0)
     is_deleted: bool = Field(default=False)
 

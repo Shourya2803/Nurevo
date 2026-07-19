@@ -235,3 +235,126 @@ async def delete_team(
     return {
         "message": "Team deleted successfully."
     }
+
+@router.get(
+    "/{team_id}/documents",
+    summary="List Documents for a Team"
+)
+async def list_team_documents(
+    team_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Returns all non-deleted documents associated with this team.
+    Leads and owners see all statuses; members see only approved/published docs.
+    """
+    from bson import ObjectId
+    from app.repositories.user import UserRepository
+    from app.repositories.team import TeamRepository
+
+    team_repo = TeamRepository(db)
+    team = await team_repo.get_by_id(team_id)
+    if not team or str(team.workspace_id) != str(current_user.workspace_id):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Team not found.")
+
+    # Build query
+    query = {
+        "team_id": ObjectId(team_id),
+        "is_deleted": False,
+        "workspace_id": ObjectId(str(current_user.workspace_id))
+    }
+    # Members only see approved/published docs
+    is_lead = str(current_user.id) in [str(l) for l in (team.lead_ids or [])]
+    if current_user.role == "member" and not is_lead:
+        query["status"] = {"$in": ["approved", "published"]}
+
+    docs_cursor = db["documents"].find(query).sort("created_at", -1)
+    docs = await docs_cursor.to_list(200)
+
+    # Enrich with author names
+    user_repo = UserRepository(db)
+    result = []
+    author_cache: dict = {}
+    for d in docs:
+        author_id = str(d.get("author_id", ""))
+        if author_id not in author_cache:
+            u = await user_repo.get_by_id(author_id)
+            author_cache[author_id] = u.full_name if u else "Unknown"
+        result.append({
+            "id": str(d["_id"]),
+            "title": d.get("title"),
+            "description": d.get("description"),
+            "content": d.get("content"),
+            "tags": d.get("tags", []),
+            "attachment_url": d.get("attachment_url"),
+            "status": d.get("status"),
+            "author_id": author_id,
+            "author_name": author_cache[author_id],
+            "view_count": d.get("view_count", 0),
+            "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
+            "updated_at": d["updated_at"].isoformat() if d.get("updated_at") else None,
+        })
+    return result
+
+@router.get(
+    "/{team_id}/members-detail",
+    summary="List Team Members with Full Details"
+)
+async def list_team_members_detail(
+    team_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Returns enriched member info (name, email, role) for all members of a team,
+    including their lead status within the team.
+    """
+    from bson import ObjectId
+    from app.repositories.user import UserRepository
+    from app.repositories.team import TeamRepository
+
+    team_repo = TeamRepository(db)
+    team = await team_repo.get_by_id(team_id)
+    if not team or str(team.workspace_id) != str(current_user.workspace_id):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Team not found.")
+
+    user_repo = UserRepository(db)
+    lead_ids_str = [str(l) for l in (team.lead_ids or [])]
+    result = []
+
+    # Always include the workspace owner
+    owner = await db["users"].find_one({
+        "workspace_id": ObjectId(str(current_user.workspace_id)),
+        "role": "owner"
+    })
+    if owner:
+        result.append({
+            "id": str(owner["_id"]),
+            "full_name": owner.get("full_name"),
+            "email": owner.get("email"),
+            "workspace_role": owner.get("role"),
+            "team_role": "owner",
+            "status": owner.get("status"),
+        })
+
+    for member_id in team.member_ids:
+        mid_str = str(member_id)
+        # skip owner already added
+        if owner and mid_str == str(owner["_id"]):
+            continue
+        u = await user_repo.get_by_id(mid_str)
+        if not u:
+            continue
+        result.append({
+            "id": mid_str,
+            "full_name": u.full_name,
+            "email": u.email,
+            "workspace_role": u.role,
+            "team_role": "lead" if mid_str in lead_ids_str else "member",
+            "status": u.status,
+        })
+    return result
+

@@ -7,6 +7,7 @@ import Verify from './features/auth/Verify';
 import DashboardLayout from './components/DashboardLayout';
 import Dashboard from './features/dashboard/Dashboard';
 import Teams from './features/teams/Teams';
+import TeamDetail from './features/teams/TeamDetail';
 import Settings from './features/settings/Settings';
 import Documents from './features/documents/Documents';
 
@@ -63,6 +64,7 @@ export default function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="teams" element={<Teams />} />
+          <Route path="teams/:teamId" element={<TeamDetail />} />
           <Route path="documents" element={<Documents />} />
           <Route path="settings" element={<Settings />} />
         </Route>

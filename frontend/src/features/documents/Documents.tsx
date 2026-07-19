@@ -10,11 +10,13 @@ import {
   Trash2, 
   Download, 
   Eye, 
+  EyeOff,
   Plus, 
   Search, 
   Clock, 
   Paperclip,
-  ShieldAlert
+  ShieldAlert,
+  Users
 } from 'lucide-react';
 
 interface Document {
@@ -28,6 +30,9 @@ interface Document {
   workspace_id: string;
   team_id: string | null;
   author_id: string;
+  author_name?: string | null;
+  approved_by?: string | null;
+  approved_by_name?: string | null;
   view_count: number;
   created_at: string;
   updated_at: string;
@@ -36,16 +41,32 @@ interface Document {
 interface Team {
   id: string;
   name: string;
+  lead_ids?: string[];
+  team_lead_id?: string | null;
 }
 
 export default function Documents() {
   const { user } = useAuthStore();
   const isApprover = user?.role === 'owner' || user?.role === 'lead';
 
+  const canApproveDoc = (doc: Document | null) => {
+    if (!doc) return false;
+    if (user?.role === 'owner') return true;
+    if (user?.role === 'lead') {
+      if (!doc.team_id) return false;
+      const team = teams.find(t => t.id === doc.team_id);
+      if (!team) return false;
+      const leads = team.lead_ids || [];
+      return (team.team_lead_id === user.id) || leads.includes(user.id);
+    }
+    return false;
+  };
+
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [hiddenDocs, setHiddenDocs] = useState<Document[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'browse' | 'pending'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse' | 'pending' | 'approvals' | 'all' | 'hidden'>('browse');
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,10 +112,23 @@ export default function Documents() {
     }
   };
 
+  const fetchHiddenDocuments = async () => {
+    if (user?.role !== 'owner') return;
+    try {
+      const response = await api.get('/documents/hidden');
+      setHiddenDocs(response.data);
+    } catch (err) {
+      console.error('Failed to load hidden documents:', err);
+    }
+  };
+
   useEffect(() => {
     fetchTeams();
     fetchDocuments();
-  }, []);
+    if (user?.role === 'owner') {
+      fetchHiddenDocuments();
+    }
+  }, [user]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -180,7 +214,7 @@ export default function Documents() {
   };
 
   const handleDelete = async (docId: string) => {
-    const doc = documents.find(d => d.id === docId);
+    const doc = documents.find(d => d.id === docId) || hiddenDocs.find(d => d.id === docId);
     if (!doc) return;
     setDeleteConfirmation({
       id: docId,
@@ -191,6 +225,9 @@ export default function Documents() {
           toast.success(`Document "${doc.title}" has been deleted.`);
           setSelectedDoc(null);
           fetchDocuments();
+          if (user?.role === 'owner') {
+            fetchHiddenDocuments();
+          }
         } catch (err: any) {
           toast.error(err.response?.data?.detail || 'Failed to delete document.');
         }
@@ -198,19 +235,59 @@ export default function Documents() {
     });
   };
 
-  // Filter lists
-  const filteredDocs = documents.filter(doc => {
-    const matchesSearch = 
-      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    if (activeTab === 'browse') {
-      return matchesSearch && doc.status === 'approved';
-    } else {
-      return matchesSearch && doc.status === 'pending_approval';
+  const handleHide = async (docId: string) => {
+    try {
+      await api.patch(`/documents/${docId}/hide`);
+      toast.success('Document hidden successfully!');
+      fetchDocuments();
+      if (user?.role === 'owner') {
+        fetchHiddenDocuments();
+      }
+      setSelectedDoc(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to hide document.');
     }
-  });
+  };
+
+  const handleUnhide = async (docId: string) => {
+    try {
+      await api.patch(`/documents/${docId}/unhide`);
+      toast.success('Document restored/unhidden successfully!');
+      fetchDocuments();
+      if (user?.role === 'owner') {
+        fetchHiddenDocuments();
+      }
+      setSelectedDoc(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to restore document.');
+    }
+  };
+
+  // Filter lists
+  const filteredDocs = (() => {
+    const docsToFilter = activeTab === 'hidden' ? hiddenDocs : documents;
+    return docsToFilter.filter(doc => {
+      const matchesSearch = 
+        doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        doc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      if (activeTab === 'browse') {
+        if (user?.role === 'owner' || user?.role === 'lead') {
+          return matchesSearch && doc.status === 'approved' && doc.approved_by === user?.id;
+        }
+        return matchesSearch && doc.status === 'approved';
+      } else if (activeTab === 'pending') {
+        return matchesSearch && doc.author_id === user?.id;
+      } else if (activeTab === 'approvals') {
+        return matchesSearch && doc.status === 'pending_approval' && canApproveDoc(doc) && doc.author_id !== user?.id;
+      } else if (activeTab === 'all') {
+        return matchesSearch;
+      } else {
+        return matchesSearch;
+      }
+    });
+  })();
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -234,44 +311,87 @@ export default function Documents() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 pb-2">
         <div className="flex gap-4">
           <button
-            onClick={() => setActiveTab('browse')}
+            onClick={() => {
+              setActiveTab('browse');
+              setSelectedDoc(null);
+            }}
             className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
               activeTab === 'browse'
                 ? 'border-brand-700 text-brand-700'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            Approved Base ({documents.filter(d => d.status === 'approved').length})
+            Approved Base ({
+              (user?.role === 'owner' || user?.role === 'lead')
+                ? documents.filter(d => d.status === 'approved' && d.approved_by === user?.id).length
+                : documents.filter(d => d.status === 'approved').length
+            })
           </button>
           
-          {(isApprover || documents.some(d => d.author_id === user?.id && d.status === 'pending_approval')) && (
+          <button
+            onClick={() => {
+              setActiveTab('pending');
+              setSelectedDoc(null);
+            }}
+            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'pending'
+                ? 'border-brand-700 text-brand-700'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            My Submissions ({documents.filter(d => d.author_id === user?.id).length})
+          </button>
+
+          {isApprover && (
             <button
-              onClick={() => setActiveTab('pending')}
+              onClick={() => {
+                setActiveTab('approvals');
+                setSelectedDoc(null);
+              }}
               className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
-                activeTab === 'pending'
+                activeTab === 'approvals'
                   ? 'border-brand-700 text-brand-700'
                   : 'border-transparent text-gray-500 hover:text-gray-900'
               }`}
             >
-              Pending Approval ({documents.filter(d => d.status === 'pending_approval').length})
-              {documents.filter(d => d.status === 'pending_approval').length > 0 && (
+              Approval Requests ({documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length})
+              {documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               )}
             </button>
           )}
-        </div>
 
-        <div className="relative w-full md:w-80">
-          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-4 w-4 text-gray-400" />
-          </span>
-          <input
-            type="text"
-            placeholder="Search documents or tags..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
-          />
+          {user?.role === 'owner' && (
+            <>
+              <button
+                onClick={() => {
+                  setActiveTab('all');
+                  setSelectedDoc(null);
+                }}
+                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                  activeTab === 'all'
+                    ? 'border-brand-700 text-brand-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                All Documents ({documents.length})
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('hidden');
+                  setSelectedDoc(null);
+                }}
+                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                  activeTab === 'hidden'
+                    ? 'border-brand-700 text-brand-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Hidden Documents ({hiddenDocs.length})
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -300,8 +420,19 @@ export default function Documents() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1.5 min-w-0">
-                        <h4 className="font-bold text-gray-900 text-sm truncate">{doc.title}</h4>
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-gray-900 text-sm truncate">{doc.title}</h4>
+                          {doc.team_id ? (
+                            <span className="text-[9px] bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-brand-100/50">
+                              {teams.find(t => t.id === doc.team_id)?.name || 'Team'}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] bg-gray-50 text-gray-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-gray-200">
+                              Workspace-Wide
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 line-clamp-2">{doc.description}</p>
                       </div>
                       
@@ -310,22 +441,44 @@ export default function Documents() {
                           ? 'bg-emerald-50 text-emerald-700' 
                           : 'bg-amber-50 text-amber-700'
                       }`}>
-                        {doc.status}
+                        {doc.status.replace('_', ' ')}
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {doc.tags.map((tag) => (
-                        <span key={tag} className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                          #{tag}
+                    {doc.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {doc.tags.map((tag) => (
+                          <span key={tag} className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Upload and Approval Meta Info */}
+                    <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] text-gray-500">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-gray-400 font-medium">Uploaded by:</span>
+                        <span className="font-semibold text-gray-700 truncate">{doc.author_name || 'Workspace Member'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-gray-400 font-medium">Approved by:</span>
+                        <span className="font-semibold text-gray-700 truncate">
+                          {doc.status === 'approved' ? (doc.approved_by_name || 'Workspace Administrator') : '—'}
                         </span>
-                      ))}
+                      </div>
+                      <div className="flex items-center gap-1.5 col-span-2">
+                        <span className="text-gray-400 font-medium">Upload time:</span>
+                        <span className="font-semibold text-gray-700">
+                          {new Date(doc.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-4 text-[10px] text-gray-400">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
-                        {new Date(doc.created_at).toLocaleDateString()}
+                        Uploaded {new Date(doc.created_at).toLocaleDateString()}
                       </span>
                       <span className="flex items-center gap-1">
                         <Eye className="h-3.5 w-3.5" />
@@ -351,15 +504,27 @@ export default function Documents() {
                   </div>
 
                   <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
-                    selectedDoc.status === 'approved' 
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    activeTab === 'hidden'
+                      ? 'bg-red-50 text-red-800 border border-red-200'
+                      : selectedDoc.status === 'approved' 
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                        : 'bg-amber-50 text-amber-800 border border-amber-200'
                   }`}>
-                    {selectedDoc.status}
+                    {activeTab === 'hidden' ? 'hidden' : selectedDoc.status}
                   </span>
                 </div>
 
                 <div className="space-y-4">
+                  {selectedDoc.team_id && (
+                    <div>
+                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Assigned Group</h5>
+                      <span className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 rounded-xl bg-brand-50 text-brand-800 text-xs font-semibold border border-brand-100/50">
+                        <Users className="h-3.5 w-3.5 text-brand-650" />
+                        {teams.find(t => t.id === selectedDoc.team_id)?.name || 'Unknown Group'}
+                      </span>
+                    </div>
+                  )}
+
                   <div>
                     <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Description</h5>
                     <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedDoc.description}</p>
@@ -395,32 +560,57 @@ export default function Documents() {
                 </div>
 
                 {/* Operations */}
-                <div className="border-t border-gray-100 pt-4 flex flex-wrap gap-2 justify-between">
-                  {/* Approval triggers */}
-                  {isApprover && selectedDoc.status === 'pending_approval' && (
-                    <div className="flex gap-2">
+                <div className="border-t border-gray-100 pt-4 flex flex-wrap gap-2 items-center justify-between">
+                  <div className="flex gap-2">
+                    {/* Approval triggers */}
+                    {activeTab !== 'hidden' && canApproveDoc(selectedDoc) && selectedDoc.status === 'pending_approval' && (
+                      <>
+                        <button
+                          onClick={() => handleApprove(selectedDoc.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Check className="h-4 w-4" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(selectedDoc.id)}
+                          className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <X className="h-4 w-4" />
+                          Reject
+                        </button>
+                      </>
+                    )}
+
+                    {/* Hide Document Trigger */}
+                    {activeTab !== 'hidden' && user?.role === 'owner' && (
                       <button
-                        onClick={() => handleApprove(selectedDoc.id)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        onClick={() => handleHide(selectedDoc.id)}
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all border border-gray-200 cursor-pointer"
+                        title="Hide from user view"
                       >
-                        <Check className="h-4 w-4" />
-                        Approve
+                        <EyeOff className="h-4 w-4" />
+                        Hide Document
                       </button>
+                    )}
+
+                    {/* Unhide Document Trigger */}
+                    {activeTab === 'hidden' && user?.role === 'owner' && (
                       <button
-                        onClick={() => handleReject(selectedDoc.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        onClick={() => handleUnhide(selectedDoc.id)}
+                        className="bg-brand-600 hover:bg-brand-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
                       >
-                        <X className="h-4 w-4" />
-                        Reject
+                        <Eye className="h-4 w-4" />
+                        Restore / Unhide
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {/* Delete triggers */}
                   {(user?.role === 'owner' || selectedDoc.author_id === user?.id) && (
                     <button
                       onClick={() => handleDelete(selectedDoc.id)}
-                      className="bg-transparent hover:bg-red-50 text-red-600 font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all border border-red-200/50 cursor-pointer ml-auto"
+                      className="bg-transparent hover:bg-red-50 text-red-600 font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all border border-red-200/50 cursor-pointer"
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete Document

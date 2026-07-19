@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
@@ -13,8 +14,8 @@ import {
   UserMinus,
   Mail,
   ShieldAlert,
-  Edit2,
-  Search
+  Search,
+  Eye
 } from 'lucide-react';
 
 interface Team {
@@ -38,6 +39,7 @@ interface Member {
 
 export default function Teams() {
   const { user, workspace } = useAuthStore();
+  const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
 
   const [activeTab, setActiveTab] = useState<'teams' | 'members'>('teams');
@@ -68,6 +70,10 @@ export default function Teams() {
   const [inviteTeamId, setInviteTeamId] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
 
+  // Pagination State
+  const [teamsPage, setTeamsPage] = useState(1);
+  const [membersPage, setMembersPage] = useState(1);
+
   // Role modification state
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [newRole, setNewRole] = useState('member');
@@ -76,11 +82,20 @@ export default function Teams() {
 
   // Custom Deletion Confirmation State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
-    type: 'team' | 'member';
+    type: 'team' | 'member' | 'remove_member';
     id: string;
     name: string;
     onConfirm: () => Promise<void>;
   } | null>(null);
+
+  // Reset pagination on filter or search changes
+  useEffect(() => {
+    setMembersPage(1);
+  }, [searchTerm, selectedTeamFilter]);
+
+  useEffect(() => {
+    setTeamsPage(1);
+  }, [activeTab]);
 
   const fetchTeams = async () => {
     try {
@@ -190,12 +205,11 @@ export default function Teams() {
   };
 
   const handleRemoveMember = (teamId: string, memberId: string) => {
-    const team = teams.find(t => t.id === teamId);
     const mInfo = members.find(m => m.id === memberId);
     const memberName = mInfo?.full_name || `ID: ${memberId}`;
 
     setDeleteConfirmation({
-      type: 'remove_member' as any,
+      type: 'remove_member',
       id: memberId,
       name: memberName,
       onConfirm: async () => {
@@ -321,7 +335,7 @@ export default function Teams() {
         >
           Teams & Squads
         </button>
-        {user?.role !== 'member' && (
+        {user?.role === 'owner' && (
           <button
             onClick={() => setActiveTab('members')}
             className={`pb-3 text-sm font-semibold border-b-2 px-4 transition-all uppercase tracking-wider ${
@@ -351,84 +365,122 @@ export default function Teams() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {teams.map((team) => (
-                <div key={team.id} className="bg-white border border-gray-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                        {team.member_ids.length} members
-                      </span>
-                      {isOwner && (
-                        <button
-                          onClick={() => handleDeleteTeam(team.id)}
-                          className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
-                          title="Delete Team"
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {teams.slice((teamsPage - 1) * 9, teamsPage * 9).map((team) => (
+                  <div key={team.id} className="bg-white border border-gray-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          {team.member_ids.length} members
+                        </span>
+                        {isOwner && (
+                          <button
+                            onClick={() => handleDeleteTeam(team.id)}
+                            className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                            title="Delete Team"
+                          >
+                            <Trash2 className="h-4.5 w-4.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3
+                          onClick={() => navigate(`/dashboard/teams/${team.id}`)}
+                          className="font-bold text-gray-900 text-lg leading-tight hover:text-brand-700 transition-colors cursor-pointer"
                         >
-                          <Trash2 className="h-4.5 w-4.5" />
+                          {team.name}
+                        </h3>
+                        <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">
+                          {team.description || 'No description provided.'}
+                        </p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1.5">
+                        <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">Team Leads</p>
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {(() => {
+                            const leads = team.lead_ids || [];
+                            const allLeads = [...(team.team_lead_id ? [team.team_lead_id] : []), ...leads];
+                            const uniqueLeads = Array.from(new Set(allLeads));
+
+                            if (uniqueLeads.length === 0) {
+                              return <span className="text-xs text-gray-400 italic">Unassigned</span>;
+                            }
+
+                            return uniqueLeads.map((id) => {
+                              const leadName = members.find((m) => m.id === id)?.full_name || `ID: ${id.slice(-6)}`;
+                              const isCurrentUser = id === user?.id;
+                              return (
+                                <span key={id} className="flex items-center gap-1">
+                                  <span className="text-xs font-bold text-gray-700">{leadName}</span>
+                                  {isCurrentUser && (
+                                    <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
+                                  )}
+                                </span>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-5 mt-5 border-t border-gray-100 flex items-center gap-2">
+                      <button
+                        onClick={() => navigate(`/dashboard/teams/${team.id}`)}
+                        className="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Click to Open
+                      </button>
+
+                      {user?.role === 'owner' && (
+                        <button
+                          onClick={() => {
+                            setSelectedTeamId(team.id);
+                            setShowManageModal(true);
+                          }}
+                          className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Users className="h-3.5 w-3.5" />
+                          Manage Members
                         </button>
                       )}
                     </div>
-
-                    <div className="space-y-1">
-                      <h3 className="font-bold text-gray-900 text-lg leading-tight">{team.name}</h3>
-                      <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">
-                        {team.description || 'No description provided.'}
-                      </p>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1.5">
-                      <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">Team Leads</p>
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        {(() => {
-                          const leads = team.lead_ids || [];
-                          const allLeads = [...(team.team_lead_id ? [team.team_lead_id] : []), ...leads];
-                          const uniqueLeads = Array.from(new Set(allLeads));
-
-                          if (uniqueLeads.length === 0) {
-                            return <span className="text-xs text-gray-400 italic">Unassigned</span>;
-                          }
-
-                          return uniqueLeads.map((id) => {
-                            const leadName = members.find((m) => m.id === id)?.full_name || `ID: ${id.slice(-6)}`;
-                            const isCurrentUser = id === user?.id;
-                            return (
-                              <span key={id} className="flex items-center gap-1">
-                                <span className="text-xs font-bold text-gray-700">{leadName}</span>
-                                {isCurrentUser && (
-                                  <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
-                                )}
-                              </span>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
                   </div>
+                ))}
+              </div>
 
-                  {user?.role !== 'member' && (
-                    <div className="pt-5 mt-5 border-t border-gray-100 flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedTeamId(team.id);
-                          setShowManageModal(true);
-                        }}
-                        className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Users className="h-3.5 w-3.5" />
-                        Manage Members
-                      </button>
-                    </div>
-                  )}
+              {/* Teams Pagination Controls */}
+              {Math.ceil(teams.length / 9) > 1 && (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-4 mt-6">
+                  <button
+                    onClick={() => setTeamsPage(prev => Math.max(prev - 1, 1))}
+                    disabled={teamsPage === 1}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-gray-500 font-medium">
+                    Page {teamsPage} of {Math.ceil(teams.length / 9)}
+                  </span>
+                  <button
+                    onClick={() => setTeamsPage(prev => Math.min(prev + 1, Math.ceil(teams.length / 9)))}
+                    disabled={teamsPage === Math.ceil(teams.length / 9)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    Next
+                  </button>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </>
       )}
 
       {/* ======================= TAB 2: MEMBERS ======================= */}
-      {activeTab === 'members' && (
+      {activeTab === 'members' && user?.role === 'owner' && (
         <>
           {membersLoading ? (
             <div className="flex justify-center items-center py-20">
@@ -482,8 +534,8 @@ export default function Teams() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
-                    {members
-                      .filter((member) => {
+                    {(() => {
+                      const filteredMembers = members.filter((member) => {
                         const query = searchTerm.toLowerCase();
                         const matchesSearch =
                           member.full_name?.toLowerCase().includes(query) ||
@@ -496,8 +548,12 @@ export default function Teams() {
                         const matchesTeam = memberTeams.some((t) => t.id === selectedTeamFilter);
 
                         return matchesSearch && matchesTeam;
-                      })
-                      .map((member) => (
+                      });
+
+                      const sliceStart = (membersPage - 1) * 10;
+                      const paginatedMems = filteredMembers.slice(sliceStart, sliceStart + 10);
+
+                      return paginatedMems.map((member) => (
                         <tr key={member.id} className="hover:bg-gray-50/30">
                           <td className="py-4 px-6 font-semibold text-gray-900">
                             <div className="space-y-0.5">
@@ -575,10 +631,52 @@ export default function Teams() {
                             </td>
                           )}
                         </tr>
-                      ))}
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </div>
+
+              {/* Members Pagination Controls */}
+              {(() => {
+                const filteredMembers = members.filter((member) => {
+                  const query = searchTerm.toLowerCase();
+                  const matchesSearch =
+                    member.full_name?.toLowerCase().includes(query) ||
+                    member.id?.toLowerCase().includes(query) ||
+                    teams.some((t) => t.member_ids.includes(member.id) && t.name.toLowerCase().includes(query));
+
+                  if (selectedTeamFilter === 'all') return matchesSearch;
+
+                  const memberTeams = teams.filter((t) => t.member_ids.includes(member.id) || member.role === 'owner');
+                  const matchesTeam = memberTeams.some((t) => t.id === selectedTeamFilter);
+
+                  return matchesSearch && matchesTeam;
+                });
+                const totalMemPages = Math.ceil(filteredMembers.length / 10);
+                if (totalMemPages <= 1) return null;
+                return (
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4 mt-6">
+                    <button
+                      onClick={() => setMembersPage(prev => Math.max(prev - 1, 1))}
+                      disabled={membersPage === 1}
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-xs text-gray-500 font-medium">
+                      Page {membersPage} of {totalMemPages}
+                    </span>
+                    <button
+                      onClick={() => setMembersPage(prev => Math.min(prev + 1, totalMemPages))}
+                      disabled={membersPage === totalMemPages}
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </>
