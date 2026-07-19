@@ -24,6 +24,7 @@ class TeamResponse(BaseModel):
     description: str
     workspace_id: str
     team_lead_id: Optional[str] = None
+    lead_ids: List[str] = []
     member_ids: List[str] = []
     created_at: str
     updated_at: str

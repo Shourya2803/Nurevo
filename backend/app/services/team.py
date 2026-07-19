@@ -115,16 +115,45 @@ class TeamService:
         if lead_user.role == "member":
             await self.user_repo.update(lead_id, {"role": "lead"})
 
-        # Add lead to members list if not already present
-        member_ids = team.member_ids
-        lead_obj_id = ObjectId(lead_id)
-        if lead_obj_id not in member_ids:
-            member_ids.append(lead_obj_id)
-
+        # Update lead and ensure lead is in member_ids and lead_ids
         updated = await self.team_repo.update(
             team_id, 
-            {"team_lead_id": lead_obj_id, "member_ids": member_ids}
+            {
+                "$set": {"team_lead_id": ObjectId(lead_id)},
+                "$addToSet": {
+                    "member_ids": ObjectId(lead_id),
+                    "lead_ids": ObjectId(lead_id)
+                }
+            }
         )
+        return updated
+
+    async def remove_lead(self, team_id: str, workspace_id: str, lead_id: str) -> Team:
+        """
+        Removes a Team Lead role from a member of the team.
+        """
+        team = await self.team_repo.get_by_id(team_id)
+        if not team or str(team.workspace_id) != workspace_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found.")
+
+        lead_oid = ObjectId(lead_id)
+        update_op = {"$pull": {"lead_ids": lead_oid}}
+        if team.team_lead_id and str(team.team_lead_id) == str(lead_id):
+            update_op["$set"] = {"team_lead_id": None}
+
+        updated = await self.team_repo.update(team_id, update_op)
+
+        # Check if the user is still a lead on any other team in this workspace
+        remaining_leads = await self.team_repo.get_all({
+            "workspace_id": ObjectId(workspace_id),
+            "lead_ids": lead_oid
+        })
+        if not remaining_leads:
+            # If not a lead on any team, demote workspace role back to member
+            lead_user = await self.user_repo.get_by_id(lead_id)
+            if lead_user and lead_user.role == "lead":
+                await self.user_repo.update(lead_id, {"role": "member"})
+
         return updated
 
     async def add_member(self, team_id: str, workspace_id: str, user_id: str) -> Team:
@@ -140,10 +169,12 @@ class TeamService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist in this workspace.")
 
         user_obj_id = ObjectId(user_id)
-        if user_obj_id in team.member_ids:
+        # Check if user is already a member using string comparison
+        member_ids_str = [str(m) for m in team.member_ids]
+        if str(user_id) in member_ids_str:
             return team  # Already a member
 
-        updated = await self.team_repo.update(team_id, {"$push": {"member_ids": user_obj_id}})
+        updated = await self.team_repo.update(team_id, {"$addToSet": {"member_ids": user_obj_id}})
         return updated
 
     async def remove_member(self, team_id: str, workspace_id: str, user_id: str) -> Team:
@@ -155,10 +186,16 @@ class TeamService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found.")
 
         user_obj_id = ObjectId(user_id)
-        update_op = {"$pull": {"member_ids": user_obj_id}}
+        update_op = {
+            "$pull": {
+                "member_ids": user_obj_id,
+                "lead_ids": user_obj_id
+            }
+        }
         
         # If removed member is the lead, unassign lead
         if team.team_lead_id == user_obj_id:
+            update_op["$set"] = {"team_lead_id": None}
             update_op["$set"] = {"team_lead_id": None}
 
         updated = await self.team_repo.update(team_id, update_op)

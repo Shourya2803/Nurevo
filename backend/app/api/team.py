@@ -35,6 +35,7 @@ async def create_team(
             "description": team.description,
             "workspace_id": str(team.workspace_id),
             "member_ids": [str(m) for m in team.member_ids],
+            "lead_ids": [str(l) for l in getattr(team, 'lead_ids', [])],
             "team_lead_id": str(team.team_lead_id) if team.team_lead_id else None
         }
     }
@@ -63,6 +64,7 @@ async def list_teams(
             "description": t.description,
             "workspace_id": str(t.workspace_id),
             "member_ids": [str(m) for m in t.member_ids],
+            "lead_ids": [str(l) for l in getattr(t, 'lead_ids', [])],
             "team_lead_id": str(t.team_lead_id) if t.team_lead_id else None,
             "created_at": t.created_at.isoformat(),
             "updated_at": t.updated_at.isoformat()
@@ -93,6 +95,7 @@ async def get_team_details(
         "description": team.description,
         "workspace_id": str(team.workspace_id),
         "member_ids": [str(m) for m in team.member_ids],
+        "lead_ids": [str(l) for l in getattr(team, 'lead_ids', [])],
         "team_lead_id": str(team.team_lead_id) if team.team_lead_id else None,
         "created_at": team.created_at.isoformat(),
         "updated_at": team.updated_at.isoformat()
@@ -146,6 +149,28 @@ async def assign_team_lead(
     return {
         "message": "Team lead assigned successfully.",
         "team_lead_id": str(team.team_lead_id)
+    }
+
+@router.post(
+    "/{team_id}/lead/remove",
+    summary="Remove a Team Lead"
+)
+async def remove_team_lead(
+    team_id: str,
+    payload: TeamAssignLead,
+    current_user: User = Depends(RequireRoles(["owner"])),
+    team_service: TeamService = Depends(get_team_service)
+):
+    """
+    Removes a user as the Team Lead. Restricted to Owners.
+    """
+    await team_service.remove_lead(
+        team_id=team_id,
+        workspace_id=str(current_user.workspace_id),
+        lead_id=payload.team_lead_id
+    )
+    return {
+        "message": "Team lead removed successfully."
     }
 
 @router.post(

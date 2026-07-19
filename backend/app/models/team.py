@@ -7,6 +7,7 @@ class Team(MongoBaseModel):
     description: str = Field(..., max_length=500)
     workspace_id: PyObjectId
     team_lead_id: Optional[PyObjectId] = None
+    lead_ids: List[PyObjectId] = Field(default_factory=list)
     member_ids: List[PyObjectId] = Field(default_factory=list)
 
     model_config = {

@@ -176,13 +176,27 @@ class WorkspaceService:
                 detail="Workspace Owner cannot be deleted from the workspace."
             )
 
-        # Remove user from all teams
+        # Remove user from all teams using TeamService
+        from app.services.team import TeamService
+        team_service = TeamService(self.db)
+        
         teams = await self.team_repo.get_all({
             "workspace_id": ObjectId(workspace_id),
             "member_ids": ObjectId(member_id)
         })
         for team in teams:
-            await self.team_repo.remove_member(str(team.id), workspace_id, member_id)
+            try:
+                await team_service.remove_member(str(team.id), workspace_id, member_id)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to remove user {member_id} from team {team.id}: {e}")
+
+        # Delete all invitation records for this user's email in this workspace
+        if user.email:
+            await self.invite_repo.collection.delete_many({
+                "workspace_id": ObjectId(workspace_id),
+                "email": user.email
+            })
 
         # Delete user record
         await self.user_repo.delete(member_id)
