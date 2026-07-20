@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import LandingPage from './features/landing/LandingPage';
 import Signup from './features/auth/Signup';
 import Login from './features/auth/Login';
 import Verify from './features/auth/Verify';
@@ -35,9 +36,13 @@ export default function App() {
     <BrowserRouter>
       <Toaster richColors position="top-right" />
       <Routes>
+        {/* Landing Page Route */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/landing" element={<LandingPage />} />
+
         {/* Public Authentication Routes */}
         <Route 
-          path="/" 
+          path="/auth/signup" 
           element={
             <PublicRoute>
               <Signup />
