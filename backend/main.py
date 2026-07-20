@@ -19,6 +19,7 @@ from app.api.auth import router as auth_router
 from app.api.workspace import router as workspace_router
 from app.api.team import router as team_router
 from app.api.document import router as document_router
+from app.api.announcement import router as announcement_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,6 +68,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1")
 app.include_router(document_router, prefix="/api/v1")
+app.include_router(announcement_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

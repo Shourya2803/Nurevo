@@ -12,6 +12,7 @@ import {
   User,
   ShieldCheck,
   FileText,
+  Megaphone,
   ChevronDown,
   Bell,
   Building2,
@@ -37,6 +38,7 @@ export default function DashboardLayout() {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Teams', path: '/dashboard/teams', icon: Users2 },
     { name: 'Documents', path: '/dashboard/documents', icon: FileText },
+    { name: 'Announcements', path: '/dashboard/announcements', icon: Megaphone },
     { name: 'Settings', path: '/dashboard/settings', icon: SettingsIcon },
   ];
 

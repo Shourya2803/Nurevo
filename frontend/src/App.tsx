@@ -10,6 +10,7 @@ import Teams from './features/teams/Teams';
 import TeamDetail from './features/teams/TeamDetail';
 import Settings from './features/settings/Settings';
 import Documents from './features/documents/Documents';
+import Announcements from './features/announcements/Announcements';
 
 // Private Route Guard
 interface PrivateRouteProps {
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="teams" element={<Teams />} />
           <Route path="teams/:teamId" element={<TeamDetail />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="announcements" element={<Announcements />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
