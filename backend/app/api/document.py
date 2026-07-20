@@ -237,6 +237,62 @@ async def list_hidden_documents(
     return result
 
 @router.get(
+    "/{document_id}/attachment",
+    summary="Securely Proxy & Stream Document Attachment"
+)
+async def get_document_attachment(
+    document_id: str,
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Securely streams document attachment without exposing Supabase signed URLs or token parameters to the client.
+    """
+    current_user = await get_current_user_from_header_or_query(request, db)
+    
+    doc = await doc_service.get_document_details(
+        document_id=document_id,
+        workspace_id=str(current_user.workspace_id),
+        user_id=str(current_user.id),
+        role=current_user.role
+    )
+    if not doc or not doc.attachment_url:
+        raise HTTPException(status_code=404, detail="No attachment found for this document.")
+
+    url = doc.attachment_url
+    ext = ".pdf"
+    clean_url = url.split("?")[0]
+    _, raw_ext = os.path.splitext(clean_url)
+    if raw_ext:
+        ext = raw_ext.lower()
+
+    safe_title = "".join([c for c in (doc.title or "Document") if c.isalnum() or c in (" ", "_", "-")]).strip() or "Document"
+    safe_filename = f"{safe_title}{ext}"
+
+    if url.startswith("http://") or url.startswith("https://"):
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="Attachment file not found.")
+            
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            return Response(
+                content=resp.content, 
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'inline; filename="{safe_filename}"'
+                }
+            )
+    else:
+        filename = os.path.basename(url)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        file_path = os.path.join(base_dir, "uploads", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found.")
+        return FileResponse(file_path, filename=safe_filename)
+
+@router.get(
     "/{document_id}",
     summary="Get Document Details"
 )
@@ -470,53 +526,6 @@ async def upload_attachment(
         "message": "File uploaded successfully.",
         "url": url
     }
-
-@router.get(
-    "/{document_id}/attachment",
-    summary="Securely Proxy & Stream Document Attachment"
-)
-async def get_document_attachment(
-    document_id: str,
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_database),
-    doc_service: DocumentService = Depends(get_document_service)
-):
-    """
-    Securely streams document attachment without exposing Supabase signed URLs or token parameters to the client.
-    """
-    current_user = await get_current_user_from_header_or_query(request, db)
-    
-    doc = await doc_service.get_document_details(
-        document_id=document_id,
-        workspace_id=str(current_user.workspace_id),
-        user_id=str(current_user.id),
-        role=current_user.role
-    )
-    if not doc or not doc.attachment_url:
-        raise HTTPException(status_code=404, detail="No attachment found for this document.")
-
-    url = doc.attachment_url
-    if url.startswith("http://") or url.startswith("https://"):
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url)
-            if resp.status_code != 200:
-                raise HTTPException(status_code=404, detail="Attachment file not found.")
-            
-            content_type = resp.headers.get("content-type", "application/octet-stream")
-            return Response(
-                content=resp.content, 
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f"inline; filename=secure_document_attachment"
-                }
-            )
-    else:
-        filename = os.path.basename(url)
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        file_path = os.path.join(base_dir, "uploads", filename)
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found.")
-        return FileResponse(file_path)
 
 @router.get(
     "/uploads/{filename}",

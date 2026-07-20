@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { SkeletonDocumentList } from '../../components/ui/Skeleton';
 import { 
   FileText, 
@@ -88,8 +88,19 @@ export default function Documents() {
   const [uploading, setUploading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
 
-  // Detail View State
+  // Detail View & Fullscreen Modal State
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [fullscreenDoc, setFullscreenDoc] = useState<Document | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFullscreenDoc(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Custom Deletion Confirmation State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -144,24 +155,45 @@ export default function Documents() {
 
   const handleCreateDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if (!title.trim()) {
+      toast.error('Document Title is required!');
+      return;
+    }
+    if (!description.trim()) {
+      toast.error('Short Description is required!');
+      return;
+    }
+    if (!content.trim()) {
+      toast.error('Content Body is required!');
+      return;
+    }
+    if (!teamId.trim()) {
+      toast.error('Please assign the document to a Team / Squad!');
+      return;
+    }
+    if (!tagsInput.trim()) {
+      toast.error('Tags are required!');
+      return;
+    }
+    if (!attachmentFile) {
+      toast.error('Secure File Attachment is required!');
+      return;
+    }
 
     setCreateLoading(true);
     try {
       let attachmentUrl = null;
 
-      // 1. Upload file if selected
-      if (attachmentFile) {
-        setUploading(true);
-        const formData = new FormData();
-        formData.append('file', attachmentFile);
+      // 1. Upload file
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', attachmentFile);
 
-        const uploadRes = await api.post('/documents/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        attachmentUrl = uploadRes.data.url;
-        setUploading(false);
-      }
+      const uploadRes = await api.post('/documents/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      attachmentUrl = uploadRes.data.url;
+      setUploading(false);
 
       // 2. Create the document metadata
       const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
@@ -170,7 +202,7 @@ export default function Documents() {
         description,
         content,
         tags,
-        team_id: teamId || null,
+        team_id: teamId,
         attachment_url: attachmentUrl
       });
 
@@ -308,19 +340,44 @@ export default function Documents() {
     return `${baseUrl}/documents/${doc.id}/attachment?token=${token}`;
   };
 
-  const getCleanFileName = (url: string | null) => {
-    if (!url) return 'Secure_Document.pdf';
-    try {
-      const cleanPath = url.split('?')[0];
-      const rawName = cleanPath.split('/').pop() || 'Secure_Document';
-      const decoded = decodeURIComponent(rawName);
-      const ext = decoded.includes('.') ? `.${decoded.split('.').pop()}` : '.pdf';
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(decoded)) {
-        return `Secure_Document${ext}`;
+  const getDownloadFilename = (doc: Document | null) => {
+    if (!doc) return 'Document.pdf';
+    let ext = '.pdf';
+    if (doc.attachment_url) {
+      const cleanPath = doc.attachment_url.split('?')[0];
+      const match = cleanPath.match(/\.([a-zA-Z0-9]+)$/);
+      if (match) {
+        ext = `.${match[1].toLowerCase()}`;
       }
-      return decoded;
-    } catch {
-      return 'Secure_Document.pdf';
+    }
+    const safeTitle = doc.title
+      ? doc.title.trim().replace(/[/\\?%*:|"<>]/g, '_')
+      : 'Document';
+
+    return safeTitle.toLowerCase().endsWith(ext) ? safeTitle : `${safeTitle}${ext}`;
+  };
+
+  const handleDownload = async (doc: Document | null) => {
+    if (!doc) return;
+    const url = getAttachmentUrl(doc);
+    if (!url) return;
+    try {
+      toast.info("Preparing secure file download...");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = getDownloadFilename(doc);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`Downloaded: ${getDownloadFilename(doc)}`);
+    } catch (err) {
+      console.error('Download error:', err);
+      window.open(url, '_blank');
     }
   };
 
@@ -672,23 +729,20 @@ export default function Documents() {
                           Live Attachment Previewer
                         </h5>
                         <div className="flex items-center gap-2">
-                          <a
-                            href={getAttachmentUrl(selectedDoc)!}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] font-bold text-brand-700 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 border border-brand-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                          <button
+                            type="button"
+                            onClick={() => setFullscreenDoc(selectedDoc)}
+                            className="text-[10px] font-bold text-brand-700 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 border border-brand-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <ExternalLink className="h-3 w-3" /> Fullscreen
-                          </a>
-                          <a
-                            href={getAttachmentUrl(selectedDoc)!}
-                            download={getCleanFileName(selectedDoc.attachment_url)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] font-bold text-white bg-brand-700 hover:bg-brand-800 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors shadow-2xs"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownload(selectedDoc)}
+                            className="text-[10px] font-bold text-white bg-brand-700 hover:bg-brand-800 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
                           >
                             <Download className="h-3 w-3" /> Download File
-                          </a>
+                          </button>
                         </div>
                       </div>
 
@@ -713,7 +767,7 @@ export default function Documents() {
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
                             <FileText className="h-4 w-4 text-brand-700 shrink-0" />
-                            <span className="font-bold truncate">{getCleanFileName(selectedDoc.attachment_url)}</span>
+                            <span className="font-bold truncate">{getDownloadFilename(selectedDoc)}</span>
                           </div>
                         </div>
                       )}
@@ -825,10 +879,11 @@ export default function Documents() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Short Description
+                  Short Description <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="text"
+                  required
                   placeholder="Summarize the purpose of this file..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -838,11 +893,11 @@ export default function Documents() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Content Body *
+                  Content Body <span className="text-red-500 font-bold">*</span>
                 </label>
                 <textarea
                   required
-                  rows={6}
+                  rows={5}
                   placeholder="Draft your main document content or instructions here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
@@ -853,14 +908,15 @@ export default function Documents() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                    Assign to Team / Squad
+                    Assign to Team / Squad <span className="text-red-500 font-bold">*</span>
                   </label>
                   <select
+                    required
                     value={teamId}
                     onChange={(e) => setTeamId(e.target.value)}
                     className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
                   >
-                    <option value="">Public to entire Workspace</option>
+                    <option value="" disabled>Select Team / Squad *</option>
                     {teams.map((t) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
@@ -869,10 +925,11 @@ export default function Documents() {
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                    Tags (comma separated)
+                    Tags (comma separated) <span className="text-red-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="e.g. dev, backend, schema"
                     value={tagsInput}
                     onChange={(e) => setTagsInput(e.target.value)}
@@ -882,17 +939,19 @@ export default function Documents() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Secure File Attachment
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Secure File Attachment <span className="text-red-500 font-bold">*</span></span>
+                  {attachmentFile && <span className="text-[10px] font-semibold text-emerald-600">Attached ✓</span>}
                 </label>
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                <div className={`mt-1 flex justify-center px-6 pt-5 pb-6 border border-dashed rounded-xl transition-colors ${attachmentFile ? 'border-brand-500 bg-brand-50/30' : 'border-gray-200 bg-gray-50/50'}`}>
                   <div className="space-y-1 text-center">
-                    <Upload className="mx-auto h-8 w-8 text-gray-400" />
+                    <Upload className={`mx-auto h-8 w-8 ${attachmentFile ? 'text-brand-600' : 'text-gray-400'}`} />
                     <div className="flex text-xs text-gray-600">
                       <label className="relative cursor-pointer bg-transparent rounded-md font-semibold text-brand-700 hover:text-brand-800">
-                        <span>Select file</span>
+                        <span>Select file *</span>
                         <input
                           type="file"
+                          required={!attachmentFile}
                           onChange={handleFileChange}
                           className="sr-only"
                         />
@@ -901,8 +960,8 @@ export default function Documents() {
                     </div>
                     <p className="text-[10px] text-gray-400">PDF, PNG, JPG, ZIP up to 10MB</p>
                     {attachmentFile && (
-                      <p className="text-xs font-bold text-brand-700 flex items-center justify-center gap-1 mt-2">
-                        <Paperclip className="h-3.5 w-3.5" />
+                      <p className="text-xs font-bold text-brand-700 flex items-center justify-center gap-1 mt-2 bg-white px-3 py-1 rounded-lg border border-brand-200 shadow-2xs">
+                        <Paperclip className="h-3.5 w-3.5 text-brand-600" />
                         {attachmentFile.name}
                       </p>
                     )}
@@ -969,6 +1028,86 @@ export default function Documents() {
           </div>
         </div>
       )}
+
+      {/* IN-APP FULLSCREEN DOCUMENT READER MODAL */}
+      <AnimatePresence>
+        {fullscreenDoc && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col p-4 sm:p-6 text-left"
+          >
+            {/* Header Bar with Document Title */}
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800 text-white shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-xl bg-brand-600 text-white shrink-0">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] bg-brand-500/20 text-brand-300 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-brand-500/30">
+                      Fullscreen Reader
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-white truncate max-w-xl mt-0.5">{fullscreenDoc.title}</h3>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                {fullscreenDoc.attachment_url && (
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(fullscreenDoc)}
+                    className="text-xs font-bold text-white bg-brand-700 hover:bg-brand-800 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
+                  >
+                    <Download className="h-4 w-4" /> Download File
+                  </button>
+                )}
+                <button
+                  onClick={() => setFullscreenDoc(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="Close Fullscreen View"
+                  title="Close (Esc)"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Main Fullscreen Reader Content Container */}
+            <div className="flex-1 min-h-0 bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl relative flex flex-col">
+              {fullscreenDoc.attachment_url ? (
+                fullscreenDoc.attachment_url.split('?')[0].toLowerCase().endsWith('.pdf') ? (
+                  <iframe 
+                    src={`${getAttachmentUrl(fullscreenDoc)}#toolbar=0`} 
+                    className="w-full h-full border-none" 
+                    title={fullscreenDoc.title}
+                  />
+                ) : (fullscreenDoc.attachment_url.split('?')[0].match(/\.(jpeg|jpg|png|webp|gif|svg)$/i)) ? (
+                  <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950">
+                    <img 
+                      src={getAttachmentUrl(fullscreenDoc)!} 
+                      alt={fullscreenDoc.title} 
+                      className="max-h-full max-w-full object-contain rounded-xl shadow-2xl"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-8 text-white max-w-3xl mx-auto overflow-y-auto space-y-4">
+                    <h2 className="text-2xl font-bold">{fullscreenDoc.title}</h2>
+                    <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{fullscreenDoc.content}</p>
+                  </div>
+                )
+              ) : (
+                <div className="p-8 text-white max-w-3xl mx-auto overflow-y-auto space-y-4">
+                  <h2 className="text-2xl font-bold">{fullscreenDoc.title}</h2>
+                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{fullscreenDoc.content}</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

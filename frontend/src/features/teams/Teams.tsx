@@ -247,7 +247,15 @@ export default function Teams() {
 
   const handleInviteMember = async (e: FormEvent) => {
     e.preventDefault();
-    if (!workspace?.id || !inviteEmail.trim() || !inviteName.trim()) return;
+    if (!inviteName.trim()) {
+      toast.error('Full Name is required!');
+      return;
+    }
+    if (!inviteEmail.trim()) {
+      toast.error('Email Address is required!');
+      return;
+    }
+    if (!workspace?.id) return;
     setInviteLoading(true);
     try {
       await api.post(`/workspaces/${workspace.id}/invitations`, {
@@ -986,7 +994,7 @@ export default function Teams() {
             <form onSubmit={handleInviteMember} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                  Full Name
+                  Full Name <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="text"
@@ -1000,7 +1008,7 @@ export default function Teams() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                  Email Address
+                  Email Address <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="email"
