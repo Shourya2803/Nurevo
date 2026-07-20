@@ -1,17 +1,45 @@
-from fastapi import APIRouter, Depends, status, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, status, UploadFile, File, HTTPException, Request
+from fastapi.responses import Response, FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List
 import os
 import uuid
+import httpx
 
 from app.utils.db import get_database
 from app.auth.dependencies import get_current_user, RequireRoles, enforce_workspace_isolation
+from app.utils.security import decode_access_token
+from app.repositories.user import UserRepository
 from app.models.user import User
 from app.services.document import DocumentService
 from app.schemas.document import DocumentCreate, DocumentUpdate, DocumentResponse
 from app.utils.supabase import upload_file_to_supabase
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+async def get_current_user_from_header_or_query(
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+) -> User:
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication token required.")
+    
+    payload = decode_access_token(token)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid token.")
+    
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(payload.get("sub"))
+    if not user or user.status != "active":
+        raise HTTPException(status_code=401, detail="User unauthorized or inactive.")
+    return user
 
 def get_document_service(db: AsyncIOMotorDatabase = Depends(get_database)) -> DocumentService:
     return DocumentService(db)
@@ -444,6 +472,53 @@ async def upload_attachment(
     }
 
 @router.get(
+    "/{document_id}/attachment",
+    summary="Securely Proxy & Stream Document Attachment"
+)
+async def get_document_attachment(
+    document_id: str,
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Securely streams document attachment without exposing Supabase signed URLs or token parameters to the client.
+    """
+    current_user = await get_current_user_from_header_or_query(request, db)
+    
+    doc = await doc_service.get_document_details(
+        document_id=document_id,
+        workspace_id=str(current_user.workspace_id),
+        user_id=str(current_user.id),
+        role=current_user.role
+    )
+    if not doc or not doc.attachment_url:
+        raise HTTPException(status_code=404, detail="No attachment found for this document.")
+
+    url = doc.attachment_url
+    if url.startswith("http://") or url.startswith("https://"):
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="Attachment file not found.")
+            
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            return Response(
+                content=resp.content, 
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"inline; filename=secure_document_attachment"
+                }
+            )
+    else:
+        filename = os.path.basename(url)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        file_path = os.path.join(base_dir, "uploads", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found.")
+        return FileResponse(file_path)
+
+@router.get(
     "/uploads/{filename}",
     summary="Serve Local Upload Fallback"
 )
@@ -456,5 +531,4 @@ async def serve_upload(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     
-    from fastapi.responses import FileResponse
     return FileResponse(file_path)

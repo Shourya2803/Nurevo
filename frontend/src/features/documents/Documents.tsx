@@ -2,6 +2,8 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+import { SkeletonDocumentList } from '../../components/ui/Skeleton';
 import { 
   FileText, 
   Upload, 
@@ -16,7 +18,11 @@ import {
   Clock, 
   Paperclip,
   ShieldAlert,
-  Users
+  Users,
+  BookOpen,
+  ExternalLink,
+  Sparkles,
+  FileCode
 } from 'lucide-react';
 
 interface Document {
@@ -289,8 +295,41 @@ export default function Documents() {
     });
   })();
 
+  useEffect(() => {
+    if (filteredDocs.length > 0 && (!selectedDoc || !filteredDocs.some(d => d.id === selectedDoc.id))) {
+      setSelectedDoc(filteredDocs[0]);
+    }
+  }, [filteredDocs.length, activeTab]);
+
+  const getAttachmentUrl = (doc: Document | null) => {
+    if (!doc || !doc.attachment_url) return null;
+    const baseUrl = api.defaults.baseURL || 'http://localhost:8000/api/v1';
+    const token = useAuthStore.getState().token || '';
+    return `${baseUrl}/documents/${doc.id}/attachment?token=${token}`;
+  };
+
+  const getCleanFileName = (url: string | null) => {
+    if (!url) return 'Secure_Document.pdf';
+    try {
+      const cleanPath = url.split('?')[0];
+      const rawName = cleanPath.split('/').pop() || 'Secure_Document';
+      const decoded = decodeURIComponent(rawName);
+      const ext = decoded.includes('.') ? `.${decoded.split('.').pop()}` : '.pdf';
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(decoded)) {
+        return `Secure_Document${ext}`;
+      }
+      return decoded;
+    } catch {
+      return 'Secure_Document.pdf';
+    }
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6 text-left"
+    >
       {/* Upper header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -298,27 +337,29 @@ export default function Documents() {
           <p className="text-xs text-gray-500">Secure knowledge-base and file sharing environment.</p>
         </div>
 
-        <button
+        <motion.button
+          whileHover={{ scale: 1.05, boxShadow: '0 10px 15px -3px rgba(111, 78, 55, 0.25)' }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => setShowUploadModal(true)}
-          className="bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-brand-700/10 cursor-pointer self-start sm:self-auto"
+          className="bg-gradient-to-r from-brand-700 to-brand-800 hover:from-brand-800 hover:to-brand-900 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-brand-700/10 cursor-pointer self-start sm:self-auto border border-brand-600/30"
         >
           <Plus className="h-4.5 w-4.5" />
           Create / Upload Document
-        </button>
+        </motion.button>
       </div>
 
       {/* Navigation tabs + Search box */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 pb-2">
-        <div className="flex gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 pb-2 relative">
+        <div className="flex gap-4 relative overflow-x-auto pb-1 scrollbar-none whitespace-nowrap">
           <button
             onClick={() => {
               setActiveTab('browse');
               setSelectedDoc(null);
             }}
-            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all ${
+            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider transition-all relative cursor-pointer ${
               activeTab === 'browse'
-                ? 'border-brand-700 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-900'
+                ? 'text-brand-800'
+                : 'text-gray-500 hover:text-gray-900'
             }`}
           >
             Approved Base ({
@@ -326,6 +367,13 @@ export default function Documents() {
                 ? documents.filter(d => d.status === 'approved' && d.approved_by === user?.id).length
                 : documents.filter(d => d.status === 'approved').length
             })
+            {activeTab === 'browse' && (
+              <motion.div
+                layoutId="docTabUnderline"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+              />
+            )}
           </button>
           
           <button
@@ -333,13 +381,20 @@ export default function Documents() {
               setActiveTab('pending');
               setSelectedDoc(null);
             }}
-            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`pb-2.5 text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 relative cursor-pointer ${
               activeTab === 'pending'
-                ? 'border-brand-700 text-brand-700'
-                : 'border-transparent text-gray-500 hover:text-gray-900'
+                ? 'text-brand-800'
+                : 'text-gray-500 hover:text-gray-900'
             }`}
           >
             My Submissions ({documents.filter(d => d.author_id === user?.id).length})
+            {activeTab === 'pending' && (
+              <motion.div
+                layoutId="docTabUnderline"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+              />
+            )}
           </button>
 
           {isApprover && (
@@ -348,15 +403,22 @@ export default function Documents() {
                 setActiveTab('approvals');
                 setSelectedDoc(null);
               }}
-              className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+              className={`pb-2.5 text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 relative cursor-pointer ${
                 activeTab === 'approvals'
-                  ? 'border-brand-700 text-brand-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-900'
+                  ? 'text-brand-800'
+                  : 'text-gray-500 hover:text-gray-900'
               }`}
             >
               Approval Requests ({documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length})
               {documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              )}
+              {activeTab === 'approvals' && (
+                <motion.div
+                  layoutId="docTabUnderline"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                />
               )}
             </button>
           )}
@@ -368,13 +430,20 @@ export default function Documents() {
                   setActiveTab('all');
                   setSelectedDoc(null);
                 }}
-                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 relative cursor-pointer ${
                   activeTab === 'all'
-                    ? 'border-brand-700 text-brand-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                    ? 'text-brand-800'
+                    : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 All Documents ({documents.length})
+                {activeTab === 'all' && (
+                  <motion.div
+                    layoutId="docTabUnderline"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  />
+                )}
               </button>
 
               <button
@@ -382,13 +451,20 @@ export default function Documents() {
                   setActiveTab('hidden');
                   setSelectedDoc(null);
                 }}
-                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+                className={`pb-2.5 text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 relative cursor-pointer ${
                   activeTab === 'hidden'
-                    ? 'border-brand-700 text-brand-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                    ? 'text-brand-800'
+                    : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Hidden Documents ({hiddenDocs.length})
+                {activeTab === 'hidden' && (
+                  <motion.div
+                    layoutId="docTabUnderline"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  />
+                )}
               </button>
             </>
           )}
@@ -397,7 +473,7 @@ export default function Documents() {
 
       {/* Main Core Split Layout */}
       {loading ? (
-        <div className="py-20 text-center text-xs text-gray-400">Loading documents directory...</div>
+        <SkeletonDocumentList />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
@@ -409,172 +485,258 @@ export default function Documents() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {filteredDocs.map((doc) => (
-                  <div
-                    key={doc.id}
-                    onClick={() => setSelectedDoc(doc)}
-                    className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white text-left ${
-                      selectedDoc?.id === doc.id
-                        ? 'border-brand-600 shadow-sm ring-1 ring-brand-500/25'
-                        : 'border-gray-200/80 hover:border-brand-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1.5 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-gray-900 text-sm truncate">{doc.title}</h4>
-                          {doc.team_id ? (
-                            <span className="text-[9px] bg-brand-50 text-brand-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-brand-100/50">
-                              {teams.find(t => t.id === doc.team_id)?.name || 'Team'}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] bg-gray-50 text-gray-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-gray-200">
-                              Workspace-Wide
-                            </span>
-                          )}
+                {filteredDocs.map((doc) => {
+                  const isSelected = selectedDoc?.id === doc.id;
+                  const hasAttachment = Boolean(doc.attachment_url);
+                  const isPdf = doc.attachment_url?.toLowerCase().endsWith('.pdf');
+
+                  return (
+                    <motion.div
+                      key={doc.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ y: -4, scale: 1.01, boxShadow: '0 20px 30px -10px rgba(111, 78, 55, 0.15)' }}
+                      whileTap={{ scale: 0.985 }}
+                      onClick={() => setSelectedDoc(doc)}
+                      className={`p-5 rounded-3xl border transition-all cursor-pointer bg-white text-left shadow-sm group relative overflow-hidden ${
+                        isSelected
+                          ? 'border-brand-600 shadow-xl ring-2 ring-brand-500/20 bg-gradient-to-br from-brand-50/30 to-white'
+                          : 'border-slate-200/90 hover:border-brand-400 hover:shadow-lg'
+                      }`}
+                    >
+                      {/* Selected Indicator Bar */}
+                      {isSelected && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-700 rounded-l-full" />
+                      )}
+
+                      <div className="flex items-start justify-between gap-3 relative z-10 pl-1">
+                        <div className="space-y-1.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className={`p-1.5 rounded-xl shrink-0 ${isSelected ? 'bg-brand-100 text-brand-800' : 'bg-slate-100 text-slate-600 group-hover:bg-brand-50 group-hover:text-brand-700'} transition-colors`}>
+                              {isPdf ? <FileText className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                            </div>
+                            <h4 className="font-extrabold text-gray-900 text-base group-hover:text-brand-700 transition-colors truncate">{doc.title}</h4>
+                            
+                            {doc.team_id ? (
+                              <span className="text-[9px] bg-brand-50 text-brand-700 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-brand-100/60 shadow-2xs">
+                                {teams.find(t => t.id === doc.team_id)?.name || 'Team'}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] bg-slate-100 text-slate-600 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-slate-200">
+                                Workspace-Wide
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed font-normal">{doc.description}</p>
                         </div>
-                        <p className="text-xs text-gray-500 line-clamp-2">{doc.description}</p>
+                        
+                        <span className={`shrink-0 text-[9px] px-2.5 py-1 rounded-full font-extrabold uppercase border tracking-wider shadow-2xs ${
+                          doc.status === 'approved' 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {doc.status.replace('_', ' ')}
+                        </span>
                       </div>
-                      
-                      <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                        doc.status === 'approved' 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {doc.status.replace('_', ' ')}
-                      </span>
-                    </div>
 
-                    {doc.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {doc.tags.map((tag) => (
-                          <span key={tag} className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                            #{tag}
+                      {doc.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3 relative z-10 pl-1">
+                          {doc.tags.map((tag) => (
+                            <span key={tag} className="text-[9px] bg-slate-100/80 text-slate-600 font-semibold px-2 py-0.5 rounded-md border border-slate-200/60">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Upload and Approval Meta Info */}
+                      <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-gray-500 relative z-10 pl-1">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-gray-400 font-medium">Uploaded by:</span>
+                          <span className="font-bold text-gray-800 truncate">{doc.author_name || 'Workspace Member'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-gray-400 font-medium">Approved by:</span>
+                          <span className="font-bold text-gray-800 truncate">
+                            {doc.status === 'approved' ? (doc.approved_by_name || 'Workspace Administrator') : '—'}
                           </span>
-                        ))}
+                        </div>
                       </div>
-                    )}
 
-                    {/* Upload and Approval Meta Info */}
-                    <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] text-gray-500">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="text-gray-400 font-medium">Uploaded by:</span>
-                        <span className="font-semibold text-gray-700 truncate">{doc.author_name || 'Workspace Member'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="text-gray-400 font-medium">Approved by:</span>
-                        <span className="font-semibold text-gray-700 truncate">
-                          {doc.status === 'approved' ? (doc.approved_by_name || 'Workspace Administrator') : '—'}
+                      <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 mt-3 text-[10px] text-gray-400 relative z-10 pl-1">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-brand-600" />
+                          Uploaded {new Date(doc.created_at).toLocaleDateString()}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 col-span-2">
-                        <span className="text-gray-400 font-medium">Upload time:</span>
-                        <span className="font-semibold text-gray-700">
-                          {new Date(doc.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-4 text-[10px] text-gray-400">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        Uploaded {new Date(doc.created_at).toLocaleDateString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Eye className="h-3.5 w-3.5" />
-                        {doc.view_count} views
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                        {hasAttachment && (
+                          <span className="flex items-center gap-1 font-bold text-brand-700 bg-brand-50 border border-brand-100 px-2 py-0.5 rounded-md">
+                            <Paperclip className="h-3 w-3" /> Attachment Available
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Right panel: Details view */}
+          {/* Right panel: Details & Live Document Previewer */}
           <div className="lg:col-span-5">
             {selectedDoc ? (
-              <div className="glass-card p-6 bg-white border border-gray-200 sticky top-6 space-y-6 text-left">
-                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-bold bg-brand-50 text-brand-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      Document Detail
-                    </span>
-                    <h3 className="font-extrabold text-gray-950 text-base">{selectedDoc.title}</h3>
+              <motion.div 
+                key={selectedDoc.id}
+                initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="glass-card p-6 bg-white border border-slate-200/90 rounded-3xl sticky top-6 space-y-6 text-left shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto scrollbar-thin"
+              >
+                {/* Header Badge & Title */}
+                <div className="flex items-start justify-between border-b border-slate-100 pb-4 gap-3">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-extrabold bg-brand-50 text-brand-800 border border-brand-100/80 px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                        <Sparkles className="h-3 w-3 text-brand-600" />
+                        Live Reader & Inspector
+                      </span>
+                    </div>
+                    <h3 className="font-extrabold text-gray-950 text-xl leading-snug">{selectedDoc.title}</h3>
                   </div>
 
-                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                  <span className={`text-[9px] px-2.5 py-1 rounded-full font-extrabold uppercase tracking-wider shrink-0 shadow-2xs border ${
                     activeTab === 'hidden'
-                      ? 'bg-red-50 text-red-800 border border-red-200'
+                      ? 'bg-red-50 text-red-800 border-red-200'
                       : selectedDoc.status === 'approved' 
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}>
-                    {activeTab === 'hidden' ? 'hidden' : selectedDoc.status}
+                    {activeTab === 'hidden' ? 'Hidden' : selectedDoc.status.replace('_', ' ')}
                   </span>
                 </div>
 
-                <div className="space-y-4">
-                  {selectedDoc.team_id && (
+                <div className="space-y-5">
+                  {/* Metadata Grid */}
+                  <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-100 grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Assigned Group</h5>
-                      <span className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 rounded-xl bg-brand-50 text-brand-800 text-xs font-semibold border border-brand-100/50">
-                        <Users className="h-3.5 w-3.5 text-brand-650" />
-                        {teams.find(t => t.id === selectedDoc.team_id)?.name || 'Unknown Group'}
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Uploader</span>
+                      <span className="font-bold text-slate-800 truncate block mt-0.5">{selectedDoc.author_name || 'Workspace Member'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Approver</span>
+                      <span className="font-bold text-slate-800 truncate block mt-0.5">
+                        {selectedDoc.status === 'approved' ? (selectedDoc.approved_by_name || 'Workspace Admin') : 'Pending Approval'}
                       </span>
+                    </div>
+                    {selectedDoc.team_id && (
+                      <div className="col-span-2 border-t border-slate-200/60 pt-2 mt-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Assigned Group</span>
+                        <span className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg bg-brand-50 text-brand-800 text-xs font-bold border border-brand-100/60">
+                          <Users className="h-3.5 w-3.5 text-brand-650" />
+                          {teams.find(t => t.id === selectedDoc.team_id)?.name || 'Unknown Group'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Description */}
+                  {selectedDoc.description && (
+                    <div>
+                      <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Description Summary</h5>
+                      <p className="text-xs text-slate-600 leading-relaxed font-normal bg-white p-3 rounded-xl border border-slate-100">{selectedDoc.description}</p>
                     </div>
                   )}
 
+                  {/* Document Reader Container */}
                   <div>
-                    <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Description</h5>
-                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">{selectedDoc.description}</p>
-                  </div>
-
-                  <div>
-                    <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Content Body</h5>
-                    <div className="text-xs text-gray-700 bg-gray-50/50 p-4 rounded-xl border border-gray-100 mt-1 whitespace-pre-wrap font-sans leading-relaxed min-h-[150px]">
-                      {selectedDoc.content}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5 text-brand-600" />
+                        Document Content Body
+                      </h5>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        {selectedDoc.content ? `${Math.ceil(selectedDoc.content.split(/\s+/).length / 200)} min read` : ''}
+                      </span>
+                    </div>
+                    <div className="bg-gradient-to-b from-white to-slate-50/50 p-4 rounded-2xl border border-slate-200/90 shadow-xs text-xs text-slate-800 font-sans leading-relaxed whitespace-pre-wrap min-h-[140px] max-h-72 overflow-y-auto scrollbar-thin">
+                      {selectedDoc.content || <span className="text-slate-400 italic">No text content provided for this document record.</span>}
                     </div>
                   </div>
 
+                  {/* Live Attachment Reader / Previewer */}
                   {selectedDoc.attachment_url && (
-                    <div className="border border-brand-100 rounded-xl p-3 bg-brand-50/10 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2 text-xs text-gray-600 min-w-0">
-                        <Paperclip className="h-4.5 w-4.5 text-brand-700 shrink-0" />
-                        <span className="font-semibold truncate">Attachment Download Link</span>
+                    <div className="space-y-3 pt-1 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                          <Paperclip className="h-3.5 w-3.5 text-brand-600" />
+                          Live Attachment Previewer
+                        </h5>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={getAttachmentUrl(selectedDoc)!}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-bold text-brand-700 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 border border-brand-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Fullscreen
+                          </a>
+                          <a
+                            href={getAttachmentUrl(selectedDoc)!}
+                            download={getCleanFileName(selectedDoc.attachment_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-bold text-white bg-brand-700 hover:bg-brand-800 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors shadow-2xs"
+                          >
+                            <Download className="h-3 w-3" /> Download File
+                          </a>
+                        </div>
                       </div>
-                      
-                      <a
-                        href={selectedDoc.attachment_url.startsWith('/') 
-                          ? `${api.defaults.baseURL?.replace('/api/v1', '')}${selectedDoc.attachment_url}`
-                          : selectedDoc.attachment_url
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-brand-700 hover:bg-brand-800 text-white p-2 rounded-lg transition-colors inline-flex items-center justify-center shrink-0 cursor-pointer"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
+
+                      {/* PDF or Media Embed Container */}
+                      {selectedDoc.attachment_url.split('?')[0].toLowerCase().endsWith('.pdf') ? (
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner relative">
+                          <iframe 
+                            src={`${getAttachmentUrl(selectedDoc)}#toolbar=0`} 
+                            className="w-full h-80 sm:h-96 border-none" 
+                            title="PDF Document Live Preview"
+                          />
+                        </div>
+                      ) : (selectedDoc.attachment_url.split('?')[0].match(/\.(jpeg|jpg|png|webp|gif|svg)$/i)) ? (
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 p-2 flex items-center justify-center shadow-inner">
+                          <img 
+                            src={getAttachmentUrl(selectedDoc)!} 
+                            alt="Attachment Preview" 
+                            className="max-h-80 w-auto object-contain rounded-xl shadow-md"
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="h-4 w-4 text-brand-700 shrink-0" />
+                            <span className="font-bold truncate">{getCleanFileName(selectedDoc.attachment_url)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Operations */}
-                <div className="border-t border-gray-100 pt-4 flex flex-wrap gap-2 items-center justify-between">
+                {/* Operations & RBAC Triggers */}
+                <div className="border-t border-slate-100 pt-4 flex flex-wrap gap-2 items-center justify-between">
                   <div className="flex gap-2">
                     {/* Approval triggers */}
                     {activeTab !== 'hidden' && canApproveDoc(selectedDoc) && selectedDoc.status === 'pending_approval' && (
                       <>
                         <button
                           onClick={() => handleApprove(selectedDoc.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
                         >
                           <Check className="h-4 w-4" />
                           Approve
                         </button>
                         <button
                           onClick={() => handleReject(selectedDoc.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                          className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
                         >
                           <X className="h-4 w-4" />
                           Reject
@@ -586,7 +748,7 @@ export default function Documents() {
                     {activeTab !== 'hidden' && user?.role === 'owner' && (
                       <button
                         onClick={() => handleHide(selectedDoc.id)}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all border border-gray-200 cursor-pointer"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 transition-all border border-slate-200 cursor-pointer"
                         title="Hide from user view"
                       >
                         <EyeOff className="h-4 w-4" />
@@ -598,7 +760,7 @@ export default function Documents() {
                     {activeTab === 'hidden' && user?.role === 'owner' && (
                       <button
                         onClick={() => handleUnhide(selectedDoc.id)}
-                        className="bg-brand-600 hover:bg-brand-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        className="bg-brand-600 hover:bg-brand-700 text-white font-semibold py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 transition-all cursor-pointer"
                       >
                         <Eye className="h-4 w-4" />
                         Restore / Unhide
@@ -617,7 +779,7 @@ export default function Documents() {
                     </button>
                   )}
                 </div>
-              </div>
+              </motion.div>
             ) : (
               <div className="p-10 border border-gray-200 bg-white rounded-2xl text-center text-xs text-gray-400 sticky top-6">
                 <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
@@ -807,6 +969,6 @@ export default function Documents() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

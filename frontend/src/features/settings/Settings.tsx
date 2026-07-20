@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
+import { motion } from 'framer-motion';
 import { 
   Settings as SettingsIcon, 
   Check, 
   Loader2, 
   ShieldCheck, 
-  Globe, 
-  Palette 
+  Globe 
 } from 'lucide-react';
 
 export default function Settings() {
@@ -60,7 +60,12 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <motion.div 
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="max-w-2xl mx-auto space-y-6 text-left"
+    >
       <div>
         <h2 className="text-3xl font-bold tracking-tight text-gray-900">Workspace Settings</h2>
         <p className="text-gray-500 text-sm mt-1">
@@ -121,31 +126,6 @@ export default function Settings() {
             </p>
           </div>
 
-          {/* Theme Palette */}
-          <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100 space-y-4">
-            <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
-              <Palette className="h-4.5 w-4.5 text-brand-700" />
-              Company Branding
-            </h4>
-            <div>
-              <label className="block text-[11px] text-gray-600 font-medium mb-2">
-                Primary Brand Color
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  disabled={!isOwner}
-                  className="h-10 w-20 rounded border border-gray-200 cursor-pointer disabled:opacity-50"
-                />
-                <span className="text-xs font-semibold text-gray-600 uppercase">
-                  {primaryColor}
-                </span>
-              </div>
-            </div>
-          </div>
-
           {/* Registration restrictions */}
           <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100 space-y-4">
             <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
@@ -195,6 +175,6 @@ export default function Settings() {
           )}
         </form>
       </div>
-    </div>
+    </motion.div>
   );
 }

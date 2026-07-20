@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+import { SkeletonCardGrid, Skeleton } from '../../components/ui/Skeleton';
 import {
   ArrowLeft, Users, Crown, ShieldAlert, FileText, Upload,
   Search, Loader2, Eye, Trash2, CheckCircle, XCircle,
@@ -64,7 +66,6 @@ export default function TeamDetail() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
 
   // Pagination for docs
   const [docsPage, setDocsPage] = useState(1);
@@ -140,7 +141,7 @@ export default function TeamDetail() {
   // Reset doc pagination when filters change
   useEffect(() => {
     setDocsPage(1);
-  }, [search, statusFilter]);
+  }, [search]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -232,11 +233,9 @@ export default function TeamDetail() {
 
   const filteredDocs = docs.filter((d) => {
     const q = search.toLowerCase();
-    const matchSearch = d.title?.toLowerCase().includes(q) ||
+    return d.title?.toLowerCase().includes(q) ||
       d.author_name?.toLowerCase().includes(q) ||
       d.tags?.some((t) => t.toLowerCase().includes(q));
-    const matchStatus = statusFilter === 'all' || d.status === statusFilter;
-    return matchSearch && matchStatus;
   });
 
   const docsPerPage = 10;
@@ -260,50 +259,59 @@ export default function TeamDetail() {
   );
 
   return (
-    <div className="flex gap-6 h-full animate-fade-in">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col lg:flex-row gap-6 h-full text-left"
+    >
       {/* ── LEFT SIDEBAR: Members ── */}
-      <aside className="w-64 shrink-0 space-y-4">
-        <button
+      <aside className="w-full lg:w-64 shrink-0 space-y-4">
+        <motion.button
+          whileHover={{ x: -3 }}
           onClick={() => navigate('/dashboard/teams')}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-700 font-semibold transition-colors cursor-pointer"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Teams
-        </button>
+        </motion.button>
 
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm space-y-4">
           <div>
-            <h2 className="font-bold text-gray-900 text-base leading-tight">{team.name}</h2>
-            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{team.description}</p>
+            <h2 className="font-extrabold text-gray-900 text-base leading-tight">{team.name}</h2>
+            <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{team.description}</p>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Users className="h-3.5 w-3.5" />
-            <span className="font-semibold text-gray-700">{members.length}</span> members
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+            <Users className="h-3.5 w-3.5 text-brand-700" />
+            <span className="font-bold text-gray-800">{members.length}</span> active members
           </div>
 
-          <div className="border-t border-gray-100 pt-3 space-y-2">
+          <div className="border-t border-slate-100 pt-3 space-y-2">
             <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Members</p>
             {/* Scrollable member list container */}
             <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1.5 scrollbar-thin">
               {members.map((m) => {
                 const isMe = m.id === user?.id;
                 return (
-                  <div key={m.id} className={`flex items-start gap-2.5 p-2 rounded-xl transition-colors ${isMe ? 'bg-brand-50 border border-brand-100' : 'hover:bg-gray-50'}`}>
-                    <div className={`h-7 w-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                      m.team_role === 'owner' ? 'bg-amber-100 text-amber-700' :
-                      m.team_role === 'lead'  ? 'bg-indigo-100 text-indigo-700' :
-                      'bg-gray-100 text-gray-600'
+                  <motion.div 
+                    key={m.id}
+                    whileHover={{ x: 4, backgroundColor: isMe ? 'rgba(254, 243, 199, 0.5)' : 'rgba(248, 250, 252, 1)' }}
+                    className={`flex items-start gap-2.5 p-2 rounded-2xl transition-all ${isMe ? 'bg-brand-50 border border-brand-100' : 'hover:bg-slate-50'}`}
+                  >
+                    <div className={`h-7 w-7 rounded-xl flex items-center justify-center text-xs font-extrabold shrink-0 shadow-2xs ${
+                      m.team_role === 'owner' ? 'bg-amber-100 text-amber-800' :
+                      m.team_role === 'lead'  ? 'bg-indigo-100 text-indigo-800' :
+                      'bg-slate-100 text-slate-700'
                     }`}>
                       {m.full_name?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-xs font-semibold text-gray-800 truncate">{m.full_name}</span>
+                        <span className="text-xs font-bold text-gray-800 truncate">{m.full_name}</span>
                         {isMe && <span className="text-[9px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-1 rounded">You</span>}
                       </div>
                       <div className="mt-0.5">{roleBadge(m.team_role)}</div>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -316,99 +324,103 @@ export default function TeamDetail() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{team.name} — Documents</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">{team.name} — Documents</h1>
+            <p className="text-xs text-gray-400 mt-0.5 font-medium">{filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''} stored</p>
           </div>
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05, boxShadow: '0 10px 15px -3px rgba(111, 78, 55, 0.25)' }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl text-sm shadow-md transition-colors cursor-pointer"
+            className="flex items-center gap-2 bg-gradient-to-r from-brand-700 to-brand-800 hover:from-brand-800 hover:to-brand-900 text-white font-semibold py-2.5 px-4 rounded-xl text-sm shadow-md transition-all cursor-pointer border border-brand-600/30"
           >
             <Upload className="h-4 w-4" /> Upload Document
-          </button>
+          </motion.button>
         </div>
 
-        {/* Search + Filter */}
+        {/* Search */}
         <div className="flex gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search title, author, tag..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl bg-white text-xs focus:outline-none focus:ring-1 focus:ring-brand-700 transition-all"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200/90 rounded-2xl bg-white text-xs focus:outline-none focus:ring-2 focus:ring-brand-700/20 focus:border-brand-600 transition-all shadow-2xs"
             />
-          </div>
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl bg-white text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
-            >
-              <option value="all">All Statuses</option>
-              <option value="draft">Draft</option>
-              <option value="pending_approval">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
-            </select>
           </div>
         </div>
 
         {/* Documents Grid */}
         {docsLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-brand-700" />
-          </div>
+          <SkeletonCardGrid count={6} />
         ) : filteredDocs.length === 0 ? (
-          <div className="text-center py-20 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 shadow-sm"
+          >
             <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-400 font-medium">No documents yet</p>
-            <p className="text-xs text-gray-300 mt-1">Upload the first document for this team.</p>
-          </div>
+            <p className="text-sm text-gray-500 font-bold">No documents yet</p>
+            <p className="text-xs text-gray-400 mt-1">Upload the first document for this team.</p>
+          </motion.div>
         ) : (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <motion.div 
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.08 } }
+              }}
+              className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+            >
               {paginatedDocs.map((doc) => {
                 const s = STATUS_CONFIG[doc.status] || STATUS_CONFIG.draft;
                 return (
-                  <div
+                  <motion.div
                     key={doc.id}
+                    variants={{
+                      hidden: { opacity: 0, y: 15 },
+                      visible: { opacity: 1, y: 0 }
+                    }}
+                    whileHover={{ y: -6, scale: 1.02, boxShadow: '0 20px 30px -10px rgba(111, 78, 55, 0.15)' }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setSelectedDoc(doc)}
-                    className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-brand-200 transition-all cursor-pointer group space-y-3"
+                    className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:border-brand-400 transition-all cursor-pointer group space-y-3 relative overflow-hidden flex flex-col justify-between"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="h-9 w-9 rounded-xl bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors">
-                        <FileText className="h-4.5 w-4.5 text-brand-700" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-brand-500/5 rounded-full blur-xl group-hover:bg-brand-500/15 transition-all pointer-events-none" />
+
+                    <div className="space-y-3 relative z-10">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="h-9 w-9 rounded-2xl bg-brand-50 flex items-center justify-center shrink-0 group-hover:bg-brand-100 transition-colors shadow-2xs">
+                          <FileText className="h-4.5 w-4.5 text-brand-700" />
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border shadow-2xs ${s.color}`}>
+                          {s.label}
+                        </span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide border ${s.color}`}>
-                        {s.label}
-                      </span>
+
+                      <div>
+                        <h3 className="font-extrabold text-gray-900 text-sm leading-snug line-clamp-2 group-hover:text-brand-700 transition-colors">{doc.title}</h3>
+                        <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{doc.description}</p>
+                      </div>
+
+                      {doc.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {doc.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-[9px] font-semibold border border-slate-200/60">#{tag}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">{doc.title}</h3>
-                      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{doc.description}</p>
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 relative z-10">
+                      <span className="text-[10px] text-gray-400 font-medium">by {doc.author_name}</span>
                     </div>
-
-                    {doc.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {doc.tags.slice(0, 3).map((tag) => (
-                          <span key={tag} className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md text-[9px] font-medium">#{tag}</span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                      <span className="text-[10px] text-gray-400">by {doc.author_name}</span>
-                      <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                        <Eye className="h-3 w-3" /> {doc.view_count}
-                      </div>
-                    </div>
-                  </div>
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
 
             {/* Docs Pagination Controls */}
             {totalDocsPages > 1 && (
@@ -589,7 +601,7 @@ export default function TeamDetail() {
                   </span>
                 </div>
                 <h2 className="font-bold text-gray-900 text-xl leading-snug">{selectedDoc.title}</h2>
-                <p className="text-xs text-gray-400 mt-1">by {selectedDoc.author_name} · <Eye className="h-3 w-3 inline" /> {selectedDoc.view_count} views</p>
+                <p className="text-xs text-gray-400 mt-1">by {selectedDoc.author_name}</p>
               </div>
               <button onClick={() => setSelectedDoc(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer shrink-0"><X className="h-5 w-5" /></button>
             </div>
@@ -605,8 +617,13 @@ export default function TeamDetail() {
                 </div>
               )}
               {selectedDoc.attachment_url && (
-                <a href={selectedDoc.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-brand-700 hover:text-brand-800 font-semibold text-sm bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5 transition-colors">
-                  <Download className="h-4 w-4" /> View Attachment
+                <a 
+                  href={`${api.defaults.baseURL || 'http://localhost:8000/api/v1'}/documents/${selectedDoc.id}/attachment?token=${useAuthStore.getState().token || ''}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="flex items-center gap-2 text-brand-700 hover:text-brand-800 font-semibold text-sm bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5 transition-colors"
+                >
+                  <Download className="h-4 w-4" /> View / Download Attachment
                 </a>
               )}
             </div>
@@ -661,6 +678,6 @@ export default function TeamDetail() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

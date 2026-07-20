@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+import { SkeletonCardGrid, SkeletonTable } from '../../components/ui/Skeleton';
 import { 
   Users, 
   Plus, 
@@ -303,48 +305,66 @@ export default function Teams() {
         {isOwner && (
           <div className="flex gap-2">
             {activeTab === 'teams' ? (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.05, boxShadow: '0 10px 15px -3px rgba(111, 78, 55, 0.25)' }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setShowCreateModal(true)}
-                className="bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center gap-1.5 transition-all text-sm shrink-0 cursor-pointer"
+                className="bg-gradient-to-r from-brand-700 to-brand-800 hover:from-brand-800 hover:to-brand-900 text-white font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center gap-1.5 transition-all text-sm shrink-0 cursor-pointer border border-brand-600/30"
               >
                 <Plus className="h-4.5 w-4.5" />
                 Create Team
-              </button>
+              </motion.button>
             ) : (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.05, boxShadow: '0 10px 15px -3px rgba(111, 78, 55, 0.25)' }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setShowInviteModal(true)}
-                className="bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center gap-1.5 transition-all text-sm shrink-0 cursor-pointer"
+                className="bg-gradient-to-r from-brand-700 to-brand-800 hover:from-brand-800 hover:to-brand-900 text-white font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center gap-1.5 transition-all text-sm shrink-0 cursor-pointer border border-brand-600/30"
               >
                 <UserPlus className="h-4.5 w-4.5" />
                 Invite Member
-              </button>
+              </motion.button>
             )}
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-200 relative">
         <button
           onClick={() => setActiveTab('teams')}
-          className={`pb-3 text-sm font-semibold border-b-2 px-4 transition-all uppercase tracking-wider ${
+          className={`pb-3 text-sm font-semibold px-4 transition-all uppercase tracking-wider relative cursor-pointer ${
             activeTab === 'teams' 
-              ? 'border-brand-700 text-brand-700' 
-              : 'border-transparent text-gray-500 hover:text-gray-800'
+              ? 'text-brand-800' 
+              : 'text-gray-500 hover:text-gray-800'
           }`}
         >
           Teams & Squads
+          {activeTab === 'teams' && (
+            <motion.div
+              layoutId="teamTabUnderline"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+            />
+          )}
         </button>
         {user?.role === 'owner' && (
           <button
             onClick={() => setActiveTab('members')}
-            className={`pb-3 text-sm font-semibold border-b-2 px-4 transition-all uppercase tracking-wider ${
+            className={`pb-3 text-sm font-semibold px-4 transition-all uppercase tracking-wider relative cursor-pointer ${
               activeTab === 'members' 
-                ? 'border-brand-700 text-brand-700' 
-                : 'border-transparent text-gray-500 hover:text-gray-800'
+                ? 'text-brand-800' 
+                : 'text-gray-500 hover:text-gray-800'
             }`}
           >
             All Members ({activeTab === 'members' ? members.length : '...'})
+            {activeTab === 'members' && (
+              <motion.div
+                layoutId="teamTabUnderline"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-700 rounded-full"
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+              />
+            )}
           </button>
         )}
       </div>
@@ -353,52 +373,78 @@ export default function Teams() {
       {activeTab === 'teams' && (
         <>
           {loading ? (
-            <div className="flex justify-center items-center py-20">
-              <Loader2 className="h-10 w-10 text-brand-700 animate-spin" />
-            </div>
+            <SkeletonCardGrid count={6} />
           ) : teams.length === 0 ? (
-            <div className="glass-card text-center p-12 border border-gray-200">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass-card text-center p-12 border border-gray-200/80 rounded-3xl"
+            >
               <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <h3 className="font-bold text-gray-800 text-lg">No teams found</h3>
               <p className="text-gray-500 text-xs mt-1 max-w-sm mx-auto">
                 Get started by creating your first workspace team. Teams isolate knowledge boards and message channels.
               </p>
-            </div>
+            </motion.div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <motion.div 
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  hidden: { opacity: 0 },
+                  visible: { opacity: 1, transition: { staggerChildren: 0.08 } }
+                }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
                 {teams.slice((teamsPage - 1) * 9, teamsPage * 9).map((team) => (
-                  <div key={team.id} className="bg-white border border-gray-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
-                    <div className="space-y-3">
+                  <motion.div 
+                    key={team.id}
+                    variants={{
+                      hidden: { opacity: 0, y: 15 },
+                      visible: { opacity: 1, y: 0 }
+                    }}
+                    whileHover={{ y: -6, scale: 1.015, boxShadow: '0 20px 30px -10px rgba(111, 78, 55, 0.15)' }}
+                    whileTap={{ scale: 0.98 }}
+                    className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm flex flex-col justify-between hover:border-brand-400 transition-all group relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 rounded-full blur-2xl group-hover:bg-brand-500/15 transition-all pointer-events-none" />
+
+                    <div className="space-y-3 relative z-10">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        <span className="text-[10px] bg-brand-50 text-brand-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border border-brand-100/60 shadow-2xs group-hover:bg-brand-100 transition-colors">
                           {team.member_ids.length} members
                         </span>
                         {isOwner && (
-                          <button
-                            onClick={() => handleDeleteTeam(team.id)}
-                            className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                          <motion.button
+                            whileHover={{ scale: 1.2, rotate: 12 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTeam(team.id);
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer p-1 rounded-lg hover:bg-red-50"
                             title="Delete Team"
                           >
                             <Trash2 className="h-4.5 w-4.5" />
-                          </button>
+                          </motion.button>
                         )}
                       </div>
 
                       <div className="space-y-1">
                         <h3
                           onClick={() => navigate(`/dashboard/teams/${team.id}`)}
-                          className="font-bold text-gray-900 text-lg leading-tight hover:text-brand-700 transition-colors cursor-pointer"
+                          className="font-extrabold text-gray-900 text-lg leading-tight group-hover:text-brand-700 transition-colors cursor-pointer"
                         >
                           {team.name}
                         </h3>
-                        <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">
+                        <p className="text-gray-500 text-xs leading-relaxed line-clamp-2 font-normal">
                           {team.description || 'No description provided.'}
                         </p>
                       </div>
 
-                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1.5">
-                        <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">Team Leads</p>
+                      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-100 space-y-1.5 group-hover:bg-slate-100/60 transition-colors">
+                        <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Team Leads</p>
                         <div className="flex flex-wrap gap-1.5 items-center">
                           {(() => {
                             const leads = team.lead_ids || [];
@@ -414,7 +460,7 @@ export default function Teams() {
                               const isCurrentUser = id === user?.id;
                               return (
                                 <span key={id} className="flex items-center gap-1">
-                                  <span className="text-xs font-bold text-gray-700">{leadName}</span>
+                                  <span className="text-xs font-bold text-gray-800">{leadName}</span>
                                   {isCurrentUser && (
                                     <span className="bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide">You</span>
                                   )}
@@ -426,31 +472,35 @@ export default function Teams() {
                       </div>
                     </div>
 
-                    <div className="pt-5 mt-5 border-t border-gray-100 flex items-center gap-2">
-                      <button
+                    <div className="pt-5 mt-5 border-t border-slate-100 flex items-center gap-2 relative z-10">
+                      <motion.button
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
                         onClick={() => navigate(`/dashboard/teams/${team.id}`)}
-                        className="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        className="flex-1 bg-brand-700 hover:bg-brand-800 text-white font-semibold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-brand-700/20"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Click to Open
-                      </button>
+                      </motion.button>
 
                       {user?.role === 'owner' && (
-                        <button
+                        <motion.button
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
                           onClick={() => {
                             setSelectedTeamId(team.id);
                             setShowManageModal(true);
                           }}
-                          className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <Users className="h-3.5 w-3.5" />
                           Manage Members
-                        </button>
+                        </motion.button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
 
               {/* Teams Pagination Controls */}
               {Math.ceil(teams.length / 9) > 1 && (
@@ -483,9 +533,7 @@ export default function Teams() {
       {activeTab === 'members' && user?.role === 'owner' && (
         <>
           {membersLoading ? (
-            <div className="flex justify-center items-center py-20">
-              <Loader2 className="h-10 w-10 text-brand-700 animate-spin" />
-            </div>
+            <SkeletonTable rows={6} />
           ) : members.length === 0 ? (
             <div className="text-center py-20 bg-gray-50/50 rounded-2xl border text-gray-400 text-xs">
               No members found in this workspace directory.
