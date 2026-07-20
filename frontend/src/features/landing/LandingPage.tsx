@@ -47,6 +47,13 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [activeFeatureCategory, setActiveFeatureCategory] = useState<'all' | 'ai' | 'collab' | 'security'>('all');
 
+  // Redirect authenticated users directly to dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
   // Initialize Lenis smooth scroll
   useEffect(() => {
     const lenis = new Lenis({

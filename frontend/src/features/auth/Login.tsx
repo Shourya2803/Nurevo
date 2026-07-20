@@ -341,7 +341,9 @@ export default function Login() {
 
         {!isDevMode && !isSignedIn && (
           <SignIn
-            signUpUrl="/"
+            signUpUrl="/auth/signup"
+            fallbackRedirectUrl="/auth/login"
+            forceRedirectUrl="/auth/login"
             appearance={{
               variables: {
                 colorPrimary: '#854d0e',
