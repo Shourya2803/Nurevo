@@ -34,7 +34,10 @@ app = FastAPI(
     title="Nurevo Enterprise SaaS API",
     description="FastAPI Backend for the Enterprise Knowledge Management & Team Collaboration Platform",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT == "development" else None,
 )
 
 # Enable CORS for frontend requests
