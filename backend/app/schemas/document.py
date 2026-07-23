@@ -28,6 +28,5 @@ class DocumentResponse(BaseModel):
     workspace_id: str
     team_id: Optional[str] = None
     author_id: str
-    view_count: int
     created_at: str
     updated_at: str

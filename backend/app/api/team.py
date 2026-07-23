@@ -292,7 +292,6 @@ async def list_team_documents(
             "status": d.get("status"),
             "author_id": author_id,
             "author_name": author_cache[author_id],
-            "view_count": d.get("view_count", 0),
             "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
             "updated_at": d["updated_at"].isoformat() if d.get("updated_at") else None,
         })

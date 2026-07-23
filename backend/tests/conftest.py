@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 # Force setting environment to test prior to any other loads
 import os
 os.environ["ENVIRONMENT"] = "test"
-os.environ["MONGO_DB_NAME"] = "nurevo_test_db"
+os.environ["MONGO_DB_NAME"] = "nuvero_test_db"
 
 from app.utils.config import settings
 from app.utils.db import db_manager, get_database, init_db_indexes

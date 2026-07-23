@@ -141,9 +141,6 @@ class DocumentService:
                     detail="Access denied to this document."
                 )
 
-        # Increment view count
-        await self.doc_repo.update(document_id, {"view_count": doc.view_count + 1})
-        doc.view_count += 1
         return doc
 
     async def update_document(self, document_id: str, workspace_id: str, user_id: str, role: str, data: DocumentUpdate) -> Document:
@@ -296,3 +293,72 @@ class DocumentService:
             )
 
         await self.doc_repo.update(document_id, {"is_deleted": True})
+
+    async def search_documents(self, workspace_id: str, user_id: str, role: str, query_str: str) -> List[Document]:
+        """
+        Performs full-text search across documents and applies RBAC filtering.
+        """
+        if not query_str or not query_str.strip():
+            return await self.list_documents(workspace_id, user_id, role)
+
+        search_results = await self.doc_repo.full_text_search(workspace_id, query_str.strip())
+        
+        if role == "owner":
+            return search_results
+
+        # RBAC filtering for member/lead roles
+        user_teams = await self.team_repo.get_all({
+            "workspace_id": ObjectId(workspace_id),
+            "member_ids": ObjectId(user_id)
+        })
+        user_team_ids = {str(t.id) for t in user_teams}
+
+        lead_teams = await self.team_repo.get_all({
+            "workspace_id": ObjectId(workspace_id),
+            "$or": [
+                {"team_lead_id": ObjectId(user_id)},
+                {"lead_ids": ObjectId(user_id)}
+            ]
+        })
+        lead_team_ids = {str(t.id) for t in lead_teams}
+        accessible_teams = user_team_ids.union(lead_team_ids)
+
+        filtered = []
+        for doc in search_results:
+            doc_team_id = str(doc.team_id) if doc.team_id else None
+            is_author = str(doc.author_id) == user_id
+
+            if role == "lead":
+                if doc.status == "approved":
+                    if not doc_team_id or doc_team_id in accessible_teams:
+                        filtered.append(doc)
+                else:
+                    if is_author or (doc_team_id and doc_team_id in lead_team_ids):
+                        filtered.append(doc)
+            else:
+                if is_author or (doc_team_id in accessible_teams and doc.status == "approved"):
+                    filtered.append(doc)
+
+        return filtered
+
+    async def get_workspace_document_analytics(self, workspace_id: str) -> Dict[str, Any]:
+        """
+        Executes MongoDB aggregation pipeline to compute high-performance workspace analytics.
+        """
+        return await self.doc_repo.aggregate_workspace_stats(workspace_id)
+
+    async def explain_document_query(self, workspace_id: str, query_type: str = "list", search_query: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Runs MongoDB Explain Plan diagnostic to analyze query execution strategy, index usage, and stage execution stats.
+        """
+        if query_type == "text_search" and search_query:
+            return await self.doc_repo.explain_text_search(workspace_id, search_query)
+
+        # Standard list query explain
+        query = {
+            "workspace_id": workspace_id,
+            "status": "approved",
+            "is_deleted": False
+        }
+        return await self.doc_repo.explain_query(query, sort=[("created_at", -1)])
+

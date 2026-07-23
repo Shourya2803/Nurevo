@@ -13,7 +13,6 @@ class Document(MongoBaseModel):
     team_id: Optional[PyObjectId] = None
     author_id: PyObjectId
     approved_by: Optional[PyObjectId] = None
-    view_count: int = Field(default=0)
     is_deleted: bool = Field(default=False)
 
     model_config = {
@@ -29,7 +28,6 @@ class Document(MongoBaseModel):
                 "workspace_id": "60c72b2f9b1d8b2d88888888",
                 "team_id": "60c72b2f9b1d8b2d88888890",
                 "author_id": "60c72b2f9b1d8b2d88888889",
-                "view_count": 0,
                 "is_deleted": False
             }
         }

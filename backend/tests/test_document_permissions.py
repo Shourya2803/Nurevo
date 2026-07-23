@@ -92,7 +92,6 @@ async def test_document_lead_approval_and_hidden_endpoints(client: AsyncClient, 
         "team_id": ObjectId(team_a_id),
         "author_id": ObjectId(owner_id),
         "is_deleted": False,
-        "view_count": 0,
         "created_at": getattr(pytest, "utcnow", lambda: None)() or ObjectId(doc_a_id).generation_time,
         "updated_at": getattr(pytest, "utcnow", lambda: None)() or ObjectId(doc_a_id).generation_time
     })
@@ -143,3 +142,58 @@ async def test_document_lead_approval_and_hidden_endpoints(client: AsyncClient, 
     hidden_list_res2 = await client.get("/api/v1/documents/hidden", headers=headers_owner)
     assert hidden_list_res2.status_code == 200
     assert len(hidden_list_res2.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_mongodb_optimization_features(client: AsyncClient, test_db_clean):
+    db = test_db_clean
+
+    # 1. Signup owner
+    owner_payload = {
+        "full_name": "Bob Optimizer",
+        "email": "bob@optim.com",
+        "workspace_name": "Optim Corp",
+        "workspace_slug": "optim",
+        "password": "securepassword123"
+    }
+    signup_res = await client.post("/api/v1/auth/signup", json=owner_payload)
+    assert signup_res.status_code == 201
+    signup_data = signup_res.json()
+    headers_owner = {"Authorization": f"Bearer {signup_data['access_token']}"}
+    workspace_id = signup_data["workspace_id"]
+
+    # 2. Create documents with search terms
+    doc1_payload = {
+        "title": "Quantum Architecture Deep Dive",
+        "description": "High performance computing and quantum algorithms",
+        "content": "MongoDB aggregation pipelines optimize data processing.",
+        "tags": ["quantum", "database"]
+    }
+    create_res1 = await client.post("/api/v1/documents", json=doc1_payload, headers=headers_owner)
+    assert create_res1.status_code == 201
+
+    # 3. Test Aggregation Pipeline Analytics endpoint
+    analytics_res = await client.get("/api/v1/documents/analytics", headers=headers_owner)
+    assert analytics_res.status_code == 200
+    analytics_data = analytics_res.json()["analytics"]
+    assert analytics_data["total_documents"] >= 1
+    assert "status_counts" in analytics_data
+    assert "top_authors" in analytics_data
+
+    # 4. Test Explain Plan Diagnostics endpoint
+    explain_res = await client.get("/api/v1/documents/explain?query_type=list", headers=headers_owner)
+    assert explain_res.status_code == 200
+    explain_data = explain_res.json()["explain_diagnostics"]
+    assert "winning_stage" in explain_data
+    assert "used_index" in explain_data
+    assert "execution_time_millis" in explain_data
+
+    # 5. Test Transaction Context Manager Helper
+    from app.utils.db import transaction_session
+    async with transaction_session() as session:
+        # Performs operations safely (with or without transaction session)
+        await db["notifications"].insert_one(
+            {"user_id": ObjectId(), "message": "Optimization active", "is_read": False},
+            session=session
+        )
+

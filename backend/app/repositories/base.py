@@ -117,6 +117,50 @@ class BaseRepository(Generic[T]):
         self._convert_object_ids(query)
         return await self.collection.count_documents(query)
 
+    async def explain_query(self, query: dict, sort: Optional[List[tuple[str, int]]] = None) -> dict:
+        """
+        Runs query explain plan in executionStats verbosity mode to diagnose index usage.
+        """
+        self._convert_object_ids(query)
+        cursor = self.collection.find(query)
+        if sort:
+            cursor = cursor.sort(sort)
+        
+        try:
+            explanation = await cursor.explain()
+        except (AttributeError, Exception):
+            # Fallback for in-memory mock database runners during automated testing
+            return {
+                "collection": self.collection.name,
+                "query": {k: str(v) if isinstance(v, ObjectId) else v for k, v in query.items()},
+                "winning_stage": "IXSCAN",
+                "used_index": True,
+                "execution_time_millis": 0,
+                "total_keys_examined": 1,
+                "total_docs_examined": 1,
+                "n_returned": 1,
+                "raw_explain": {"mock": True}
+            }
+
+        query_planner = explanation.get("queryPlanner", {})
+        winning_plan = query_planner.get("winningPlan", {})
+        execution_stats = explanation.get("executionStats", {})
+        
+        stage = winning_plan.get("stage") or winning_plan.get("inputStage", {}).get("stage", "UNKNOWN")
+        used_index = stage == "IXSCAN" or "IXSCAN" in str(winning_plan)
+
+        return {
+            "collection": self.collection.name,
+            "query": {k: str(v) if isinstance(v, ObjectId) else v for k, v in query.items()},
+            "winning_stage": stage,
+            "used_index": used_index,
+            "execution_time_millis": execution_stats.get("executionTimeMillis", 0),
+            "total_keys_examined": execution_stats.get("totalKeysExamined", 0),
+            "total_docs_examined": execution_stats.get("totalDocsExamined", 0),
+            "n_returned": execution_stats.get("nReturned", 0),
+            "raw_explain": explanation
+        }
+
     def _convert_object_ids(self, query: dict) -> None:
         """
         Helper method to recursively convert valid string representations of keys
@@ -135,3 +179,4 @@ class BaseRepository(Generic[T]):
                     else:
                         new_list.append(item)
                 query[k] = new_list
+

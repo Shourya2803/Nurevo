@@ -79,7 +79,6 @@ async def create_document(
             "author_name": current_user.full_name,
             "approved_by": str(doc.approved_by) if getattr(doc, "approved_by", None) else None,
             "approved_by_name": current_user.full_name if getattr(doc, "approved_by", None) else None,
-            "view_count": doc.view_count,
             "created_at": doc.created_at.isoformat(),
             "updated_at": doc.updated_at.isoformat()
         }
@@ -152,17 +151,93 @@ async def list_documents(
             "author_name": author_name,
             "approved_by": str(d.approved_by) if getattr(d, "approved_by", None) else None,
             "approved_by_name": approved_by_name,
-            "view_count": d.view_count,
             "created_at": d.created_at.isoformat(),
             "updated_at": d.updated_at.isoformat()
         })
     return result
 
 @router.get(
+    "/search",
+    summary="Full-Text Search Documents"
+)
+async def search_documents(
+    q: str,
+    current_user: User = Depends(get_current_user),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Performs full-text search using MongoDB $text index with textScore ranking and RBAC enforcement.
+    """
+    docs = await doc_service.search_documents(
+        workspace_id=str(current_user.workspace_id),
+        user_id=str(current_user.id),
+        role=current_user.role,
+        query_str=q
+    )
+    
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository(doc_service.db)
+    result = []
+    for d in docs:
+        author_user = await user_repo.get_by_id(str(d.author_id))
+        result.append({
+            "id": str(d.id),
+            "title": d.title,
+            "description": d.description,
+            "content": d.content,
+            "tags": d.tags,
+            "status": d.status,
+            "author_name": author_user.full_name if author_user else "Member",
+            "created_at": d.created_at.isoformat()
+        })
+    return {"query": q, "count": len(result), "documents": result}
+
+@router.get(
+    "/analytics",
+    summary="Get Workspace Document Analytics (Aggregation Pipeline)"
+)
+async def get_document_analytics(
+    current_user: User = Depends(get_current_user),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Uses MongoDB Aggregation Pipelines ($facet, $group) for real-time document metrics.
+    """
+    analytics = await doc_service.get_workspace_document_analytics(str(current_user.workspace_id))
+    return {
+        "workspace_id": str(current_user.workspace_id),
+        "analytics": analytics
+    }
+
+@router.get(
+    "/explain",
+    summary="MongoDB Explain Plan Diagnostics"
+)
+async def explain_query_plan(
+    query_type: str = "list",
+    q: str = None,
+    current_user: User = Depends(RequireRoles(["owner"])),
+    doc_service: DocumentService = Depends(get_document_service)
+):
+    """
+    Runs MongoDB Explain Plan (executionStats) to inspect index strategy (IXSCAN vs COLLSCAN) and execution metrics.
+    """
+    plan = await doc_service.explain_document_query(
+        workspace_id=str(current_user.workspace_id),
+        query_type=query_type,
+        search_query=q
+    )
+    return {
+        "workspace_id": str(current_user.workspace_id),
+        "explain_diagnostics": plan
+    }
+
+@router.get(
     "/hidden",
     summary="List Hidden Documents (Owner Only)"
 )
 async def list_hidden_documents(
+
     current_user: User = Depends(RequireRoles(["owner"])),
     doc_service: DocumentService = Depends(get_document_service)
 ):
@@ -230,7 +305,6 @@ async def list_hidden_documents(
             "author_name": author_name,
             "approved_by": approved_by_str,
             "approved_by_name": approved_by_name,
-            "view_count": d.get("view_count", 0),
             "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
             "updated_at": d["updated_at"].isoformat() if d.get("updated_at") else None,
         })
@@ -347,7 +421,6 @@ async def get_document(
         "author_name": author_name,
         "approved_by": approved_by_str,
         "approved_by_name": approved_by_name,
-        "view_count": doc.view_count,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat()
     }
