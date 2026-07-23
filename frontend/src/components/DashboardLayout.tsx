@@ -29,9 +29,8 @@ export default function DashboardLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const handleLogout = async () => {
-    await signOut();
     logout();
-    navigate('/');
+    await signOut({ redirectUrl: '/' });
   };
 
   const navItems = [
@@ -58,9 +57,8 @@ export default function DashboardLayout() {
       </AnimatePresence>
 
       {/* Sidebar Panel (Responsive Drawer on Mobile, Fixed Sidebar on Desktop) */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-brand-950 text-white flex flex-col justify-between p-5 shrink-0 shadow-2xl transition-transform duration-300 md:translate-x-0 md:static md:z-20 h-screen overflow-hidden border-r border-brand-900/50 ${
-        mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-brand-950 text-white flex flex-col justify-between p-5 shrink-0 shadow-2xl transition-transform duration-300 md:translate-x-0 md:static md:z-20 h-screen overflow-hidden border-r border-brand-900/50 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
         {/* Background glow decoration */}
         <div className="absolute -top-20 -left-20 w-56 h-56 bg-brand-700/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 -right-20 w-56 h-56 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -68,12 +66,12 @@ export default function DashboardLayout() {
         <div className="space-y-8 relative z-10">
           {/* Logo and Brand */}
           <div className="flex items-center justify-between pb-5 border-b border-brand-900/80">
-            <Link 
-              to="/dashboard" 
+            <Link
+              to="/dashboard"
               onClick={() => setMobileNavOpen(false)}
               className="flex items-center gap-3 group"
             >
-              <motion.div 
+              <motion.div
                 whileHover={{ rotate: 12, scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="bg-gradient-to-tr from-brand-700 to-brand-500 p-2.5 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-700/30 border border-brand-400/20"
@@ -108,20 +106,19 @@ export default function DashboardLayout() {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
                 return (
-                  <Link 
-                    key={item.path} 
-                    to={item.path} 
+                  <Link
+                    key={item.path}
+                    to={item.path}
                     onClick={() => setMobileNavOpen(false)}
                     className="relative block"
                   >
                     <motion.div
                       whileHover={{ x: 3 }}
                       whileTap={{ scale: 0.98 }}
-                      className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all relative ${
-                        isActive
+                      className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all relative ${isActive
                           ? 'text-white bg-gradient-to-r from-brand-700 to-brand-800 shadow-md shadow-brand-700/25 border border-brand-600/30'
                           : 'text-brand-300 hover:text-white hover:bg-brand-900/40'
-                      }`}
+                        }`}
                     >
                       <Icon className={`h-5 w-5 shrink-0 transition-transform ${isActive ? 'text-brand-200 scale-110' : 'text-brand-400'}`} />
                       <span>{item.name}</span>
@@ -174,7 +171,7 @@ export default function DashboardLayout() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header navbar */}
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-10 shadow-xs">
+        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
           <div className="flex items-center gap-3">
             {/* Hamburger Button for Mobile */}
             <button
@@ -199,7 +196,7 @@ export default function DashboardLayout() {
 
           <div className="flex items-center gap-2 sm:gap-4">
             {/* Quick Notification Bell */}
-            <motion.button 
+            <motion.button
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.95 }}
               className="p-2 rounded-xl text-slate-400 hover:text-brand-700 hover:bg-brand-50 transition-colors relative cursor-pointer"

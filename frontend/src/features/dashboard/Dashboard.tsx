@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { motion } from 'framer-motion';
-import { 
-  Building, 
-  Users, 
+import {
+  Building,
+  Users,
   Shield,
   Crown,
   UserCheck,
@@ -75,14 +75,14 @@ export default function Dashboard() {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial="hidden"
       animate="visible"
       variants={containerVariants}
       className="space-y-8 text-left"
     >
       {/* 1. Welcoming Banner */}
-      <motion.div 
+      <motion.div
         variants={itemVariants}
         className="bg-gradient-to-br from-brand-950 via-brand-900 to-brand-800 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-brand-800/40"
       >
@@ -99,7 +99,7 @@ export default function Dashboard() {
             </div>
 
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-              Welcome back, <span className="bg-gradient-to-r from-white via-brand-100 to-brand-200 bg-clip-text text-transparent">{user?.full_name}</span>!
+              Welcome <span className="bg-gradient-to-r from-white via-brand-100 to-brand-200 bg-clip-text text-transparent">{user?.full_name}</span>!
             </h1>
 
             <p className="text-brand-200/90 text-sm max-w-xl leading-relaxed font-normal">
@@ -110,8 +110,8 @@ export default function Dashboard() {
           <div className="shrink-0 flex flex-wrap gap-3">
             {role === 'owner' && (
               <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-                <Link 
-                  to="/dashboard/settings" 
+                <Link
+                  to="/dashboard/settings"
                   className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2.5 px-4 rounded-xl border border-white/15 text-xs flex items-center gap-2 transition-all backdrop-blur-sm shadow-md"
                 >
                   <Settings className="h-4 w-4 text-brand-200" />
@@ -120,8 +120,8 @@ export default function Dashboard() {
               </motion.div>
             )}
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-              <Link 
-                to="/dashboard/teams" 
+              <Link
+                to="/dashboard/teams"
                 className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition-all shadow-xl shadow-brand-900/40 border border-brand-500/30"
               >
                 Colleague Directory
@@ -147,7 +147,7 @@ export default function Dashboard() {
             <motion.div variants={itemVariants} className="space-y-8">
               {/* Admin Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <motion.div 
+                <motion.div
                   whileHover={{ y: -4, scale: 1.01 }}
                   className="p-6 rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-xl hover:border-brand-300 transition-all flex items-center justify-between group"
                 >
@@ -163,15 +163,15 @@ export default function Dashboard() {
                   </div>
                 </motion.div>
 
-                <motion.div 
+                <motion.div
                   whileHover={{ y: -4, scale: 1.01 }}
                   className="p-6 rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all flex items-center justify-between group"
                 >
                   <div className="space-y-1">
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Registration Policy</p>
                     <p className="text-sm font-extrabold text-slate-800 truncate mt-1 max-w-[200px]">
-                      {workspace?.settings?.allowed_domains?.length 
-                        ? workspace.settings.allowed_domains.join(', ') 
+                      {workspace?.settings?.allowed_domains?.length
+                        ? workspace.settings.allowed_domains.join(', ')
                         : 'Open Domain Access'}
                     </p>
                     <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
@@ -183,7 +183,7 @@ export default function Dashboard() {
                   </div>
                 </motion.div>
 
-                <motion.div 
+                <motion.div
                   whileHover={{ y: -4, scale: 1.01 }}
                   className="p-6 rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-xl hover:border-amber-300 transition-all flex items-center justify-between group"
                 >
@@ -215,14 +215,14 @@ export default function Dashboard() {
                       Owner Privileges
                     </span>
                   </div>
-                  
+
                   <div className="space-y-5">
                     <p className="text-xs text-slate-600 leading-relaxed">
                       As the Workspace Owner, you possess master privileges to manage squad security, invite workspace members, enforce domain registration constraints, and manage sensitive assets.
                     </p>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                      <motion.div 
+                      <motion.div
                         whileHover={{ y: -2 }}
                         className="border border-slate-200/90 rounded-2xl p-5 space-y-2.5 bg-slate-50/50 hover:bg-white hover:border-brand-300 hover:shadow-md transition-all"
                       >
@@ -240,7 +240,7 @@ export default function Dashboard() {
                         </Link>
                       </motion.div>
 
-                      <motion.div 
+                      <motion.div
                         whileHover={{ y: -2 }}
                         className="border border-slate-200/90 rounded-2xl p-5 space-y-2.5 bg-slate-50/50 hover:bg-white hover:border-brand-300 hover:shadow-md transition-all"
                       >
@@ -337,7 +337,7 @@ export default function Dashboard() {
                       Team Leadership Portal
                     </h3>
                   </div>
-                  
+
                   <div className="space-y-5">
                     <p className="text-xs text-slate-600 leading-relaxed">
                       You are designated as a <strong className="text-slate-900">Team Lead</strong>. You have authoring, approval, and document review privileges for your squad.
@@ -448,7 +448,7 @@ export default function Dashboard() {
                       Member Workspace Portal
                     </h3>
                   </div>
-                  
+
                   <div className="space-y-5">
                     <p className="text-xs text-slate-600 leading-relaxed">
                       You are a registered <strong className="text-slate-900">Workspace Member</strong>. Access approved knowledge resources, upload draft documents, and view assigned squads.
