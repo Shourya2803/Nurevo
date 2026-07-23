@@ -70,6 +70,10 @@ app.include_router(team_router, prefix="/api/v1")
 app.include_router(document_router, prefix="/api/v1")
 app.include_router(announcement_router, prefix="/api/v1")
 
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
 @app.get("/")
 async def root():
     return {
