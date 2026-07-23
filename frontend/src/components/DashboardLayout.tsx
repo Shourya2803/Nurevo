@@ -1,8 +1,9 @@
-import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useNotificationStore } from '../store/notificationStore';
 import { useClerk } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sparkles,
   LayoutDashboard,
@@ -17,18 +18,61 @@ import {
   Bell,
   Building2,
   Menu,
-  X
+  X,
+  CheckCheck,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 
+const formatTimeAgo = (dateStr: string) => {
+  const now = new Date();
+  const normalizedStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : `${dateStr}Z`;
+  const date = new Date(normalizedStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+};
+
 export default function DashboardLayout() {
-  const { user, workspace, logout } = useAuthStore();
-  const navigate = useNavigate();
+  const { user, workspace, token, logout } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const { signOut } = useClerk();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  const {
+    notifications,
+    unreadCount,
+    fetchNotifications,
+    fetchUnreadCount,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    connectWebSocket,
+    disconnectWebSocket,
+  } = useNotificationStore();
+
+  useEffect(() => {
+    if (token) {
+      fetchNotifications();
+      fetchUnreadCount();
+      connectWebSocket(token);
+    }
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [token]);
+
   const handleLogout = async () => {
+    disconnectWebSocket();
     logout();
     await signOut({ redirectUrl: '/' });
   };
@@ -196,14 +240,150 @@ export default function DashboardLayout() {
 
           <div className="flex items-center gap-2 sm:gap-4">
             {/* Quick Notification Bell */}
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.95 }}
-              className="p-2 rounded-xl text-slate-400 hover:text-brand-700 hover:bg-brand-50 transition-colors relative cursor-pointer"
-            >
-              <Bell className="h-4.5 w-4.5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-600" />
-            </motion.button>
+            <div className="relative">
+              <motion.button
+                onClick={() => setShowNotifications(!showNotifications)}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
+                className={`p-2 rounded-xl transition-colors relative cursor-pointer border ${
+                  showNotifications 
+                    ? 'text-brand-700 bg-brand-50 border-brand-200/50' 
+                    : 'text-slate-400 hover:text-brand-700 hover:bg-brand-50 border-transparent'
+                }`}
+              >
+                <Bell className="h-4.5 w-4.5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-600 border-2 border-white animate-pulse" />
+                )}
+              </motion.button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl p-0 z-50 text-left overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900">Notifications</span>
+                          {unreadCount > 0 && (
+                            <span className="text-[10px] font-extrabold bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">
+                              {unreadCount} new
+                            </span>
+                          )}
+                        </div>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={() => markAllAsRead()}
+                            className="flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded-md transition-all cursor-pointer"
+                          >
+                            <CheckCheck className="h-3 w-3" />
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+                        {notifications.length === 0 ? (
+                          <div className="p-8 text-center flex flex-col items-center justify-center">
+                            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
+                              <Bell className="h-5 w-5" />
+                            </div>
+                            <p className="text-xs font-semibold text-slate-700">All caught up! 🎉</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">No notifications at the moment.</p>
+                          </div>
+                        ) : (
+                          notifications.map((n) => {
+                            let Icon = Bell;
+                            let colorClass = 'bg-slate-50 text-slate-500';
+                            if (n.type.startsWith('DOCUMENT')) {
+                              Icon = FileText;
+                              colorClass = 'bg-blue-50 text-blue-600';
+                            } else if (n.type.startsWith('TEAM')) {
+                              Icon = Users2;
+                              colorClass = 'bg-green-50 text-green-600';
+                            } else if (n.type === 'ANNOUNCEMENT') {
+                              Icon = Megaphone;
+                              colorClass = 'bg-amber-50 text-amber-600';
+                            } else if (n.type === 'SECURITY') {
+                              Icon = ShieldAlert;
+                              colorClass = 'bg-red-50 text-red-600';
+                            } else if (n.type === 'ROLE_UPDATED') {
+                              Icon = ShieldCheck;
+                              colorClass = 'bg-purple-50 text-purple-600';
+                            }
+
+                            return (
+                              <div 
+                                key={n.id} 
+                                onClick={async (e) => {
+                                  const target = e.target as HTMLElement;
+                                  if (target.closest('button')) return;
+                                  
+                                  if (!n.is_read) {
+                                    await markAsRead(n.id);
+                                  }
+                                  if (n.data?.redirect_url) {
+                                    navigate(n.data.redirect_url);
+                                    setShowNotifications(false);
+                                  }
+                                }}
+                                className={`p-4 flex gap-3 items-start transition-all hover:bg-slate-50 relative group/item cursor-pointer ${
+                                  !n.is_read ? 'bg-brand-50/20' : ''
+                                }`}
+                              >
+                                <div className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${colorClass}`}>
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0 pr-8">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-xs font-bold text-slate-900 truncate">{n.title}</p>
+                                    {!n.is_read && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0" />
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 mt-0.5 leading-normal">{n.message}</p>
+                                  <span className="text-[9px] text-slate-400 font-medium block mt-1">
+                                    {formatTimeAgo(n.created_at)}
+                                  </span>
+                                </div>
+                                
+                                <div className="absolute right-3 top-4 flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                  {!n.is_read && (
+                                    <button
+                                      onClick={() => markAsRead(n.id)}
+                                      title="Mark as read"
+                                      className="p-1 rounded-md text-slate-400 hover:text-brand-600 hover:bg-slate-100 transition-all cursor-pointer"
+                                    >
+                                      <CheckCheck className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => deleteNotification(n.id)}
+                                    title="Delete notification"
+                                    className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
 
             <div className="h-5 w-px bg-slate-200" />
 

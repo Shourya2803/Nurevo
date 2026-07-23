@@ -144,13 +144,15 @@ async def assign_team_lead(
     team = await team_service.assign_lead(
         team_id=team_id,
         workspace_id=str(current_user.workspace_id),
-        lead_id=payload.team_lead_id
+        lead_id=payload.team_lead_id,
+        assigned_by_id=str(current_user.id)
     )
     return {
         "message": "Team lead assigned successfully.",
         "team_lead_id": str(team.team_lead_id)
     }
 
+# Remove lead doesn't notify/publish separate event since we handle lead role demotion, but we keep it simple.
 @router.post(
     "/{team_id}/lead/remove",
     summary="Remove a Team Lead"
@@ -189,7 +191,8 @@ async def add_team_member(
     team = await team_service.add_member(
         team_id=team_id,
         workspace_id=str(current_user.workspace_id),
-        user_id=payload.user_id
+        user_id=payload.user_id,
+        added_by_id=str(current_user.id)
     )
     return {
         "message": "Member added to team successfully.",
@@ -212,7 +215,8 @@ async def remove_team_member(
     team = await team_service.remove_member(
         team_id=team_id,
         workspace_id=str(current_user.workspace_id),
-        user_id=payload.user_id
+        user_id=payload.user_id,
+        removed_by_id=str(current_user.id)
     )
     return {
         "message": "Member removed from team successfully.",

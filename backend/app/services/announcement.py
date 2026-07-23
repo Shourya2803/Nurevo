@@ -122,6 +122,17 @@ class AnnouncementService:
         doc["author_id"] = str(doc["author_id"])
         if doc.get("target_team_id"):
             doc["target_team_id"] = str(doc["target_team_id"])
+        
+        # Publish announcement event
+        from app.utils.event_bus import event_bus
+        await event_bus.publish("announcement_created", {
+            "announcement_id": doc["id"],
+            "workspace_id": doc["workspace_id"],
+            "title": doc["title"],
+            "message": doc["content"][:150] + "..." if len(doc["content"]) > 150 else doc["content"],
+            "sender_id": doc["author_id"]
+        })
+
         doc["created_at"] = doc["created_at"].isoformat()
         doc["updated_at"] = doc["updated_at"].isoformat()
         return doc

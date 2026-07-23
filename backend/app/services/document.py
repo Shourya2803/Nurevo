@@ -9,6 +9,8 @@ from app.repositories.document import DocumentRepository
 from app.repositories.team import TeamRepository
 from app.schemas.document import DocumentCreate, DocumentUpdate
 
+from app.utils.event_bus import event_bus
+
 class DocumentService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
@@ -33,7 +35,6 @@ class DocumentService:
             team_oid = ObjectId(data.team_id)
 
         # Set default status based on role
-        initial_status = "pending_approval"
         approved_by_id = None
         if author_role == "owner":
             initial_status = "approved"
@@ -44,6 +45,16 @@ class DocumentService:
             if str(author_id) in lead_ids_str or (team_obj.team_lead_id and str(team_obj.team_lead_id) == str(author_id)):
                 initial_status = "approved"
                 approved_by_id = ObjectId(author_id)
+            else:
+                initial_status = "pending_team_lead"
+        else:
+            # For members or leads submitting to teams they do not lead
+            # If no team, or if the team has no leads assigned, bypass to admin approval
+            has_leads = team_obj and (team_obj.team_lead_id or (team_obj.lead_ids and len(team_obj.lead_ids) > 0))
+            if not team_obj or not has_leads:
+                initial_status = "pending_admin"
+            else:
+                initial_status = "pending_team_lead"
 
         doc = Document(
             title=data.title,
@@ -58,7 +69,18 @@ class DocumentService:
             approved_by=approved_by_id
         )
 
-        return await self.doc_repo.create(doc)
+        created_doc = await self.doc_repo.create(doc)
+
+        if created_doc.status in ["pending_team_lead", "pending_admin"]:
+            await event_bus.publish("document_submitted", {
+                "document_id": str(created_doc.id),
+                "workspace_id": str(created_doc.workspace_id),
+                "team_id": str(created_doc.team_id) if created_doc.team_id else None,
+                "author_id": str(created_doc.author_id),
+                "title": created_doc.title
+            })
+
+        return created_doc
 
     async def list_documents(self, workspace_id: str, user_id: str, role: str) -> List[Document]:
         """
@@ -176,9 +198,10 @@ class DocumentService:
         if data.team_id is not None:
             updates["team_id"] = ObjectId(data.team_id) if data.team_id else None
 
-        # Reset status if user is member
-        if role == "member":
-            updates["status"] = "pending_approval"
+        # Reset status if user is member or if the document was rejected
+        was_rejected = doc.status == "rejected"
+        if role == "member" or was_rejected:
+            updates["status"] = "pending_team_lead"
 
         updates["updated_at"] = datetime.utcnow()
 
@@ -188,6 +211,16 @@ class DocumentService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update document."
             )
+
+        if was_rejected:
+            await event_bus.publish("document_resubmitted", {
+                "document_id": str(updated_doc.id),
+                "workspace_id": str(updated_doc.workspace_id),
+                "team_id": str(updated_doc.team_id) if updated_doc.team_id else None,
+                "author_id": str(updated_doc.author_id),
+                "title": updated_doc.title
+            })
+
         return updated_doc
 
     async def approve_document(self, document_id: str, workspace_id: str, user_id: str, user_role: str) -> Document:
@@ -227,17 +260,49 @@ class DocumentService:
                     detail="Access denied. You are not a lead of this document's team."
                 )
 
+        new_status = "approved"
+        if doc.status == "pending_team_lead":
+            if user_role == "lead":
+                new_status = "pending_admin"
+            elif user_role == "owner":
+                new_status = "approved"
+        elif doc.status == "pending_admin":
+            if user_role == "owner":
+                new_status = "approved"
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only workspace owners/admins can approve documents pending admin review."
+                )
+
         updated_doc = await self.doc_repo.update(document_id, {
-            "status": "approved",
-            "approved_by": ObjectId(user_id),
+            "status": new_status,
+            "approved_by": ObjectId(user_id) if new_status == "approved" else doc.approved_by,
             "updated_at": datetime.utcnow()
+        })
+
+        await event_bus.publish("document_approved", {
+            "document_id": str(updated_doc.id),
+            "workspace_id": str(updated_doc.workspace_id),
+            "team_id": str(updated_doc.team_id) if updated_doc.team_id else None,
+            "author_id": str(updated_doc.author_id),
+            "approver_id": user_id,
+            "approver_role": user_role,
+            "new_status": new_status,
+            "title": updated_doc.title
         })
         return updated_doc
 
-    async def reject_document(self, document_id: str, workspace_id: str, user_id: str, user_role: str) -> Document:
+    async def reject_document(self, document_id: str, workspace_id: str, user_id: str, user_role: str, reason: str = "") -> Document:
         """
         Rejects a document. Allowed only for Owner (Admin) or Team Leads of the document's team.
         """
+        if not reason or not reason.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Rejection reason is mandatory."
+            )
+
         if user_role not in ["owner", "lead"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -271,7 +336,22 @@ class DocumentService:
                     detail="Access denied. You are not a lead of this document's team."
                 )
 
-        updated_doc = await self.doc_repo.update(document_id, {"status": "rejected", "updated_at": datetime.utcnow()})
+        updated_doc = await self.doc_repo.update(document_id, {
+            "status": "rejected",
+            "rejection_reason": reason,
+            "updated_at": datetime.utcnow()
+        })
+
+        await event_bus.publish("document_rejected", {
+            "document_id": str(updated_doc.id),
+            "workspace_id": str(updated_doc.workspace_id),
+            "team_id": str(updated_doc.team_id) if updated_doc.team_id else None,
+            "author_id": str(updated_doc.author_id),
+            "rejecter_id": user_id,
+            "rejecter_role": user_role,
+            "reason": reason,
+            "title": updated_doc.title
+        })
         return updated_doc
 
     async def delete_document(self, document_id: str, workspace_id: str, user_id: str, role: str) -> None:

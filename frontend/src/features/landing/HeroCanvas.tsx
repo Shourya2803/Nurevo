@@ -1,10 +1,10 @@
-import React, { useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 
 // 3D Floating Document Sheet Component in Warm Coffee Theme
-function FloatingDocumentCard({ position, rotation, color = '#6f4e37', label = 'DOC' }: { position: [number, number, number]; rotation: [number, number, number]; color?: string; label?: string }) {
+function FloatingDocumentCard({ position, rotation, color = '#6f4e37' }: { position: [number, number, number]; rotation: [number, number, number]; color?: string }) {
   const cardRef = useRef<THREE.Group>(null!);
 
   useFrame((state) => {
@@ -167,11 +167,11 @@ function SceneContent() {
     <group ref={groupRef}>
       <AICoreSphere />
       <NeuralConnections />
-      <FloatingDocumentCard position={[-2.4, 1.8, 1]} rotation={[0.2, 0.4, -0.1]} color="#6f4e37" label="CONTRACT" />
-      <FloatingDocumentCard position={[2.5, 1.5, -0.5]} rotation={[-0.1, -0.3, 0.1]} color="#5a3f2d" label="SPEC.PDF" />
-      <FloatingDocumentCard position={[-2.8, -1.6, -1]} rotation={[0.3, -0.2, 0.2]} color="#9b5a68" label="REPORT" />
-      <FloatingDocumentCard position={[2.2, -1.8, 0.8]} rotation={[-0.2, 0.3, -0.1]} color="#483224" label="INVOICE" />
-      <FloatingDocumentCard position={[0, 2.8, -1.5]} rotation={[0.4, 0, 0]} color="#6f4e37" label="POLICY" />
+      <FloatingDocumentCard position={[-2.4, 1.8, 1]} rotation={[0.2, 0.4, -0.1]} color="#6f4e37" />
+      <FloatingDocumentCard position={[2.5, 1.5, -0.5]} rotation={[-0.1, -0.3, 0.1]} color="#5a3f2d" />
+      <FloatingDocumentCard position={[-2.8, -1.6, -1]} rotation={[0.3, -0.2, 0.2]} color="#9b5a68" />
+      <FloatingDocumentCard position={[2.2, -1.8, 0.8]} rotation={[-0.2, 0.3, -0.1]} color="#483224" />
+      <FloatingDocumentCard position={[0, 2.8, -1.5]} rotation={[0.4, 0, 0]} color="#6f4e37" />
     </group>
   );
 }

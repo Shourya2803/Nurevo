@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
@@ -14,15 +15,13 @@ import {
   Eye, 
   EyeOff,
   Plus, 
-  Search, 
   Clock, 
   Paperclip,
   ShieldAlert,
   Users,
   BookOpen,
   ExternalLink,
-  Sparkles,
-  FileCode
+  Sparkles
 } from 'lucide-react';
 
 interface Document {
@@ -51,14 +50,28 @@ interface Team {
   team_lead_id?: string | null;
 }
 
+const formatError = (err: any, fallback: string): string => {
+  const detail = err.response?.data?.detail;
+  if (!detail) return err.message || fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+  }
+  return fallback;
+};
+
 export default function Documents() {
   const { user } = useAuthStore();
   const isApprover = user?.role === 'owner' || user?.role === 'lead';
+  const [searchParams] = useSearchParams();
+  const highlightDocId = searchParams.get('id') || searchParams.get('documentId');
 
   const canApproveDoc = (doc: Document | null) => {
     if (!doc) return false;
+    if (doc.status !== 'pending_team_lead' && doc.status !== 'pending_admin') return false;
     if (user?.role === 'owner') return true;
     if (user?.role === 'lead') {
+      if (doc.status !== 'pending_team_lead') return false;
       if (!doc.team_id) return false;
       const team = teams.find(t => t.id === doc.team_id);
       if (!team) return false;
@@ -75,8 +88,6 @@ export default function Documents() {
   const [activeTab, setActiveTab] = useState<'browse' | 'pending' | 'approvals' | 'all' | 'hidden'>('browse');
 
   // Search & Filter
-  const [searchQuery, setSearchQuery] = useState('');
-
   // Upload/Create Form State
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -147,6 +158,15 @@ export default function Documents() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (highlightDocId && documents.length > 0) {
+      const doc = documents.find((d) => d.id === highlightDocId);
+      if (doc) {
+        setSelectedDoc(doc);
+      }
+    }
+  }, [highlightDocId, documents]);
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setAttachmentFile(e.target.files[0]);
@@ -202,7 +222,7 @@ export default function Documents() {
         description,
         content,
         tags,
-        team_id: teamId,
+        team_id: teamId || null,
         attachment_url: attachmentUrl
       });
 
@@ -218,7 +238,7 @@ export default function Documents() {
       
       fetchDocuments();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to publish document.');
+      toast.error(formatError(err, 'Failed to publish document.'));
     } finally {
       setCreateLoading(false);
       setUploading(false);
@@ -234,7 +254,7 @@ export default function Documents() {
         setSelectedDoc(prev => prev ? { ...prev, status: 'approved' } : null);
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to approve document.');
+      toast.error(formatError(err, 'Failed to approve document.'));
     }
   };
 
@@ -247,7 +267,7 @@ export default function Documents() {
         setSelectedDoc(prev => prev ? { ...prev, status: 'rejected' } : null);
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to reject document.');
+      toast.error(formatError(err, 'Failed to reject document.'));
     }
   };
 
@@ -267,7 +287,7 @@ export default function Documents() {
             fetchHiddenDocuments();
           }
         } catch (err: any) {
-          toast.error(err.response?.data?.detail || 'Failed to delete document.');
+          toast.error(formatError(err, 'Failed to delete document.'));
         }
       }
     });
@@ -283,7 +303,7 @@ export default function Documents() {
       }
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to hide document.');
+      toast.error(formatError(err, 'Failed to hide document.'));
     }
   };
 
@@ -297,7 +317,7 @@ export default function Documents() {
       }
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to restore document.');
+      toast.error(formatError(err, 'Failed to restore document.'));
     }
   };
 
@@ -305,24 +325,19 @@ export default function Documents() {
   const filteredDocs = (() => {
     const docsToFilter = activeTab === 'hidden' ? hiddenDocs : documents;
     return docsToFilter.filter(doc => {
-      const matchesSearch = 
-        doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        doc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-
       if (activeTab === 'browse') {
         if (user?.role === 'owner' || user?.role === 'lead') {
-          return matchesSearch && doc.status === 'approved' && doc.approved_by === user?.id;
+          return doc.status === 'approved' && doc.approved_by === user?.id;
         }
-        return matchesSearch && doc.status === 'approved';
+        return doc.status === 'approved';
       } else if (activeTab === 'pending') {
-        return matchesSearch && doc.author_id === user?.id;
+        return doc.author_id === user?.id;
       } else if (activeTab === 'approvals') {
-        return matchesSearch && doc.status === 'pending_approval' && canApproveDoc(doc) && doc.author_id !== user?.id;
+        return canApproveDoc(doc) && doc.author_id !== user?.id;
       } else if (activeTab === 'all') {
-        return matchesSearch;
+        return true;
       } else {
-        return matchesSearch;
+        return true;
       }
     });
   })();
@@ -466,8 +481,8 @@ export default function Documents() {
                   : 'text-gray-500 hover:text-gray-900'
               }`}
             >
-              Approval Requests ({documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length})
-              {documents.filter(d => d.status === 'pending_approval' && canApproveDoc(d) && d.author_id !== user?.id).length > 0 && (
+              Approval Requests ({documents.filter(d => canApproveDoc(d) && d.author_id !== user?.id).length})
+              {documents.filter(d => canApproveDoc(d) && d.author_id !== user?.id).length > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               )}
               {activeTab === 'approvals' && (
@@ -779,7 +794,7 @@ export default function Documents() {
                 <div className="border-t border-slate-100 pt-4 flex flex-wrap gap-2 items-center justify-between">
                   <div className="flex gap-2">
                     {/* Approval triggers */}
-                    {activeTab !== 'hidden' && canApproveDoc(selectedDoc) && selectedDoc.status === 'pending_approval' && (
+                    {activeTab !== 'hidden' && canApproveDoc(selectedDoc) && (
                       <>
                         <button
                           onClick={() => handleApprove(selectedDoc.id)}

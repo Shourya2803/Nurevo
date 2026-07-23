@@ -421,6 +421,7 @@ async def get_document(
         "author_name": author_name,
         "approved_by": approved_by_str,
         "approved_by_name": approved_by_name,
+        "rejection_reason": getattr(doc, "rejection_reason", None),
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat()
     }
@@ -476,23 +477,30 @@ async def approve_document(
         "status": doc.status
     }
 
+from pydantic import BaseModel
+
+class RejectPayload(BaseModel):
+    reason: str
+
 @router.post(
     "/{document_id}/reject",
     summary="Reject a Document"
 )
 async def reject_document(
     document_id: str,
+    payload: RejectPayload,
     current_user: User = Depends(RequireRoles(["owner", "lead"])),
     doc_service: DocumentService = Depends(get_document_service)
 ):
     """
-    Rejects a pending document. Restricted to Owner or Leads.
+    Rejects a pending document with a mandatory reason. Restricted to Owner or Leads.
     """
     doc = await doc_service.reject_document(
         document_id=document_id,
         workspace_id=str(current_user.workspace_id),
         user_id=str(current_user.id),
-        user_role=current_user.role
+        user_role=current_user.role,
+        reason=payload.reason
     )
     return {
         "message": "Document rejected successfully.",

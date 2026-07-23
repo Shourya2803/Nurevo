@@ -110,11 +110,19 @@ async def test_document_lead_approval_and_hidden_endpoints(client: AsyncClient, 
     await db["documents"].update_one({"_id": ObjectId(doc_a_id)}, {"$set": {"status": "pending_approval"}})
 
     # 7. Lead B tries to reject Team A's document (Should be 403 Forbidden)
-    res_reject_fail = await client.post(f"/api/v1/documents/{doc_a_id}/reject", headers=headers_lead_b)
+    res_reject_fail = await client.post(
+        f"/api/v1/documents/{doc_a_id}/reject", 
+        json={"reason": "Formatting is incorrect"}, 
+        headers=headers_lead_b
+    )
     assert res_reject_fail.status_code == 403
 
     # 8. Lead A tries to reject Team A's document (Should succeed 200)
-    res_reject_ok = await client.post(f"/api/v1/documents/{doc_a_id}/reject", headers=headers_lead_a)
+    res_reject_ok = await client.post(
+        f"/api/v1/documents/{doc_a_id}/reject", 
+        json={"reason": "Requires further revision"}, 
+        headers=headers_lead_a
+    )
     assert res_reject_ok.status_code == 200
     assert res_reject_ok.json()["status"] == "rejected"
 

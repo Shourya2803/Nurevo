@@ -15,7 +15,7 @@ export default function Settings() {
   const isOwner = user?.role === 'owner';
 
   const [workspaceName, setWorkspaceName] = useState(workspace?.name || '');
-  const [primaryColor, setPrimaryColor] = useState(workspace?.settings?.primary_color || '#6f4e37');
+  const primaryColor = workspace?.settings?.primary_color || '#6f4e37';
   const [allowedDomains, setAllowedDomains] = useState(
     workspace?.settings?.allowed_domains?.join(', ') || ''
   );

@@ -14,6 +14,7 @@ class Document(MongoBaseModel):
     author_id: PyObjectId
     approved_by: Optional[PyObjectId] = None
     is_deleted: bool = Field(default=False)
+    rejection_reason: Optional[str] = None
 
     model_config = {
         "populate_by_name": True,

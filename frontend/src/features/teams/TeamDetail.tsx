@@ -4,11 +4,11 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { SkeletonCardGrid, Skeleton } from '../../components/ui/Skeleton';
+import { SkeletonCardGrid } from '../../components/ui/Skeleton';
 import {
   ArrowLeft, Users, Crown, ShieldAlert, FileText, Upload,
-  Search, Loader2, Eye, Trash2, CheckCircle, XCircle,
-  EyeOff, Filter, Clock, Tag, X, Download, Paperclip
+  Search, Loader2, Trash2, CheckCircle, XCircle,
+  EyeOff, Clock, Tag, X, Download, Paperclip
 } from 'lucide-react';
 
 interface TeamMember {
@@ -43,12 +43,22 @@ interface Team {
   team_lead_id: string | null;
 }
 
+const formatError = (err: any, fallback: string): string => {
+  const detail = err.response?.data?.detail;
+  if (!detail) return err.message || fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((e: any) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+  }
+  return fallback;
+};
+
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft:            { label: 'Draft',           color: 'bg-gray-100 text-gray-600 border-gray-200' },
-  pending_approval: { label: 'Pending',         color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  approved:         { label: 'Approved',        color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  published:        { label: 'Published',       color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  archived:         { label: 'Archived',        color: 'bg-rose-50 text-rose-600 border-rose-200' },
+  draft:             { label: 'Draft',           color: 'bg-gray-100 text-gray-600 border-gray-200' },
+  pending_team_lead: { label: 'Pending Lead',     color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  pending_admin:     { label: 'Pending Admin',    color: 'bg-indigo-50 text-indigo-700 border-indigo-250' },
+  approved:          { label: 'Approved',        color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  rejected:          { label: 'Rejected',        color: 'bg-rose-50 text-rose-650 border-rose-205' },
 };
 
 export default function TeamDetail() {
@@ -87,7 +97,15 @@ export default function TeamDetail() {
   const [confirmDoc, setConfirmDoc] = useState<TeamDoc | null>(null);
 
   const isTeamLead = (team?.team_lead_id === user?.id || team?.lead_ids?.includes(user?.id || '')) ?? false;
-  const canApprove = isOwner || isTeamLead;
+  const canApproveDoc = (doc: TeamDoc | null) => {
+    if (!doc) return false;
+    if (doc.status !== 'pending_team_lead' && doc.status !== 'pending_admin') return false;
+    if (isOwner) return true;
+    if (isTeamLead) {
+      return doc.status === 'pending_team_lead';
+    }
+    return false;
+  };
 
   const fetchAll = async () => {
     if (!teamId) return;
@@ -180,7 +198,7 @@ export default function TeamDetail() {
       setUploadTags(''); setUploadFile(null);
       fetchDocs();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Upload failed.');
+      toast.error(formatError(err, 'Upload failed.'));
     } finally {
       setUploading(false);
     }
@@ -193,7 +211,7 @@ export default function TeamDetail() {
       fetchDocs();
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to approve.');
+      toast.error(formatError(err, 'Failed to approve.'));
     }
   };
 
@@ -204,7 +222,7 @@ export default function TeamDetail() {
       fetchDocs();
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to reject.');
+      toast.error(formatError(err, 'Failed to reject.'));
     }
   };
 
@@ -215,7 +233,7 @@ export default function TeamDetail() {
       setDocs((prev) => prev.filter((d) => d.id !== docId));
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to hide.');
+      toast.error(formatError(err, 'Failed to hide.'));
     }
   };
 
@@ -227,7 +245,7 @@ export default function TeamDetail() {
       setConfirmDoc(null);
       setSelectedDoc(null);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to delete.');
+      toast.error(formatError(err, 'Failed to delete.'));
     }
   };
 
@@ -630,7 +648,7 @@ export default function TeamDetail() {
 
             {/* Action Bar */}
             <div className="p-4 border-t border-gray-100 flex flex-wrap gap-2">
-              {canApprove && selectedDoc.status === 'pending_approval' && (
+              {canApproveDoc(selectedDoc) && (
                 <>
                   <button onClick={() => handleApprove(selectedDoc.id)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-xl text-xs transition-colors cursor-pointer">
                     <CheckCircle className="h-3.5 w-3.5" /> Approve

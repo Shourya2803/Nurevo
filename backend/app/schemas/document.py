@@ -28,5 +28,6 @@ class DocumentResponse(BaseModel):
     workspace_id: str
     team_id: Optional[str] = None
     author_id: str
+    rejection_reason: Optional[str] = None
     created_at: str
     updated_at: str

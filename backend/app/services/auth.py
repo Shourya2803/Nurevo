@@ -238,7 +238,8 @@ class AuthService:
                 )
 
             # Mark invitation accepted if it was pending
-            if invitation.status == "pending":
+            is_new_acceptance = invitation.status == "pending"
+            if is_new_acceptance:
                 await self.invite_repo.update(str(invitation.id), {"status": "accepted"})
 
             # Fetch pending user by email
@@ -274,6 +275,14 @@ class AuthService:
         # Generate JWT access token
         access_token = create_access_token(user.id)
         
+        # Publish invitation accepted event
+        if magic_link is None and is_new_acceptance:
+            from app.utils.event_bus import event_bus
+            await event_bus.publish("invitation_accepted", {
+                "workspace_id": str(invitation.workspace_id),
+                "user_id": str(user.id)
+            })
+            
         return access_token, user, workspace
 
     async def check_token_status(self, token: str) -> dict:

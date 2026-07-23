@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { RoundedBox, Float } from '@react-three/drei';
 import * as THREE from 'three';
@@ -63,7 +63,7 @@ function SearchScene() {
 function WorkflowScene() {
   const groupRef = useRef<THREE.Group>(null!);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (groupRef.current) {
       groupRef.current.rotation.y += delta * 0.8;
     }
@@ -142,7 +142,7 @@ function SecurityScene() {
 function CloudScene() {
   const cloudRef = useRef<THREE.Group>(null!);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (cloudRef.current) {
       cloudRef.current.rotation.y += delta * 0.6;
     }

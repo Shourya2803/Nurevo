@@ -15,10 +15,8 @@ import {
   FileText,
   ChevronRight,
   Settings,
-  Sparkles,
   Zap,
-  CheckCircle2,
-  FolderGit2
+  CheckCircle2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { SkeletonMetrics, SkeletonCardGrid } from '../../components/ui/Skeleton';

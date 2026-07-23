@@ -104,7 +104,8 @@ async def init_db_indexes():
         await db["announcements"].create_index([("workspace_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)])
 
         # Notification indexes
-        await db["notifications"].create_index([("user_id", pymongo.ASCENDING), ("is_read", pymongo.ASCENDING)])
+        await db["notifications"].create_index([("recipient_id", pymongo.ASCENDING), ("is_read", pymongo.ASCENDING)])
+        await db["notifications"].create_index([("workspace_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)])
 
         logger.info("Database indexes initialized successfully.")
     except Exception as e:

@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
@@ -127,6 +128,8 @@ const TEMPLATES = [
 export default function Announcements() {
   const { user, workspace } = useAuthStore();
   const isOwner = user?.role === 'owner';
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id') || searchParams.get('announcementId');
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -169,6 +172,18 @@ export default function Announcements() {
     fetchAnnouncements();
     fetchTeams();
   }, []);
+
+  useEffect(() => {
+    if (highlightId && announcements.length > 0) {
+      setExpandedItems((prev) => ({ ...prev, [highlightId]: true }));
+      setTimeout(() => {
+        const el = document.getElementById(`announcement-${highlightId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+    }
+  }, [highlightId, announcements]);
 
   const fetchAnnouncements = async () => {
     try {
@@ -563,6 +578,7 @@ export default function Announcements() {
             return (
               <motion.div
                 key={item.id}
+                id={`announcement-${item.id}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ y: -4 }}
@@ -570,7 +586,9 @@ export default function Announcements() {
                 className={`bg-white rounded-3xl border overflow-hidden transition-all duration-300 shadow-sm hover:shadow-xl hover:border-brand-300/80 group relative ${item.is_pinned
                     ? 'border-brand-300 ring-2 ring-brand-500/10'
                     : 'border-slate-200/80'
-                  } ${item.is_hidden ? 'opacity-60 bg-slate-50/70' : ''}`}
+                  } ${item.is_hidden ? 'opacity-60 bg-slate-50/70' : ''} ${
+                    item.id === highlightId ? 'ring-2 ring-amber-500 border-amber-400 bg-amber-50/10' : ''
+                  }`}
               >
                 {/* COVER IMAGE BANNER */}
                 {item.cover_image && (

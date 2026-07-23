@@ -160,7 +160,8 @@ async def update_member_role(
         workspace_id=workspace_id,
         member_id=user_id,
         role=payload.role,
-        status_value=payload.status
+        status_value=payload.status,
+        updated_by=str(current_user.id)
     )
     return {
         "message": "User membership updated successfully.",

@@ -95,7 +95,7 @@ class TeamService:
             )
         return updated
 
-    async def assign_lead(self, team_id: str, workspace_id: str, lead_id: str) -> Team:
+    async def assign_lead(self, team_id: str, workspace_id: str, lead_id: str, assigned_by_id: Optional[str] = None) -> Team:
         """
         Assigns a Team Lead. Lead must be an active member of the workspace.
         """
@@ -125,6 +125,16 @@ class TeamService:
                 }
             }
         )
+
+        from app.utils.event_bus import event_bus
+        await event_bus.publish("team_lead_assigned", {
+            "team_id": team_id,
+            "workspace_id": workspace_id,
+            "lead_id": lead_id,
+            "assigned_by_id": assigned_by_id or str(team.workspace_id),
+            "team_name": team.name
+        })
+
         return updated
 
     async def remove_lead(self, team_id: str, workspace_id: str, lead_id: str) -> Team:
@@ -155,7 +165,7 @@ class TeamService:
 
         return updated
 
-    async def add_member(self, team_id: str, workspace_id: str, user_id: str) -> Team:
+    async def add_member(self, team_id: str, workspace_id: str, user_id: str, added_by_id: Optional[str] = None) -> Team:
         """
         Adds a user to a team. User must belong to the workspace.
         """
@@ -174,9 +184,19 @@ class TeamService:
             return team  # Already a member
 
         updated = await self.team_repo.update(team_id, {"$addToSet": {"member_ids": user_obj_id}})
+
+        from app.utils.event_bus import event_bus
+        await event_bus.publish("team_member_added", {
+            "team_id": team_id,
+            "workspace_id": workspace_id,
+            "member_id": user_id,
+            "added_by_id": added_by_id or str(team.workspace_id),
+            "team_name": team.name
+        })
+
         return updated
 
-    async def remove_member(self, team_id: str, workspace_id: str, user_id: str) -> Team:
+    async def remove_member(self, team_id: str, workspace_id: str, user_id: str, removed_by_id: Optional[str] = None) -> Team:
         """
         Removes a member from the team and resets lead assignment if the user was the lead.
         """
@@ -197,6 +217,16 @@ class TeamService:
             update_op["$set"] = {"team_lead_id": None}
 
         updated = await self.team_repo.update(team_id, update_op)
+
+        from app.utils.event_bus import event_bus
+        await event_bus.publish("team_member_removed", {
+            "team_id": team_id,
+            "workspace_id": workspace_id,
+            "member_id": user_id,
+            "removed_by_id": removed_by_id or str(team.workspace_id),
+            "team_name": team.name
+        })
+
         return updated
 
     async def delete_team(self, team_id: str, workspace_id: str) -> bool:

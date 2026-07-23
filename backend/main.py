@@ -21,11 +21,15 @@ from app.api.team import router as team_router
 from app.api.document import router as document_router
 from app.api.announcement import router as announcement_router
 
+from app.services.notification_handlers import register_notification_handlers
+from app.api.notification import router as notification_router
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Connect to DB and initialize indexes
     db_manager.connect_to_database()
     await init_db_indexes()
+    register_notification_handlers()
     yield
     # Shutdown: Close DB connections
     db_manager.close_database_connection()
@@ -72,6 +76,7 @@ app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1")
 app.include_router(document_router, prefix="/api/v1")
 app.include_router(announcement_router, prefix="/api/v1")
+app.include_router(notification_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():

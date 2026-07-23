@@ -142,7 +142,7 @@ class WorkspaceService:
         """
         return await self.user_repo.get_all({"workspace_id": ObjectId(workspace_id)})
 
-    async def update_member_role_or_status(self, workspace_id: str, member_id: str, role: str, status_value: Optional[str] = None) -> User:
+    async def update_member_role_or_status(self, workspace_id: str, member_id: str, role: str, status_value: Optional[str] = None, updated_by: Optional[str] = None) -> User:
         """
         Allows Workspace Owner to update roles (lead | member) or toggle status (active | inactive).
         """
@@ -153,11 +153,23 @@ class WorkspaceService:
                 detail="User not found in this workspace."
             )
 
+        old_role = user.role
         updates: Dict[str, Any] = {"role": role}
         if status_value:
             updates["status"] = status_value
 
         updated_user = await self.user_repo.update(member_id, updates)
+
+        if role != old_role:
+            from app.utils.event_bus import event_bus
+            await event_bus.publish("member_role_updated", {
+                "workspace_id": workspace_id,
+                "user_id": member_id,
+                "old_role": old_role,
+                "new_role": role,
+                "updated_by": updated_by
+            })
+
         return updated_user
 
     async def remove_member(self, workspace_id: str, member_id: str) -> None:
